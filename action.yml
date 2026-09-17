@@ -1,0 +1,38 @@
+name: "AI Code Review"
+description: >-
+  Reviews a pull request's diff for bugs, security issues, style
+  deviations, and N+1 patterns using an LLM-backed LangGraph agent, and
+  posts the result as a PR comment.
+inputs:
+  repo:
+    description: "owner/repo of the PR to review, e.g. ${{ github.repository }}"
+    required: true
+  pr_number:
+    description: "Pull request number, e.g. ${{ github.event.pull_request.number }}"
+    required: true
+  github_token:
+    description: >-
+      Token used to read the PR and post the review comment. The
+      workflow-provided ${{ secrets.GITHUB_TOKEN }} is sufficient — no
+      custom PAT needed — as long as the job grants pull-requests: write.
+    required: true
+  gemini_api_key:
+    description: "Google Gemini API key (free tier works)."
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci
+    - name: Run review
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npx tsx src/agent.ts "${{ inputs.repo }}" "${{ inputs.pr_number }}" --post
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}

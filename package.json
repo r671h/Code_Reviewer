@@ -1,0 +1,36 @@
+{
+  "name": "codereviewer",
+  "version": "0.1.0",
+  "description": "AI code review agent: LangGraph + MCP + GitHub API",
+  "private": true,
+  "type": "module",
+  "main": "dist/agent.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "dev": "tsx src/agent.ts",
+    "build": "tsc",
+    "start": "node dist/agent.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@langchain/core": "^1.2.11",
+    "@langchain/google-genai": "^2.3.2",
+    "@langchain/langgraph": "^1.4.15",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "dotenv": "^17.4.2",
+    "typescript-compiler-api": "npm:typescript@^5.9.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.3",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}
