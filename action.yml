@@ -5,16 +5,16 @@ description: >-
   posts the result as a PR comment.
 inputs:
   repo:
-    description: "owner/repo of the PR to review, e.g. ${{ github.repository }}"
+    description: "owner/repo of the PR to review, e.g. octocat/hello-world"
     required: true
   pr_number:
-    description: "Pull request number, e.g. ${{ github.event.pull_request.number }}"
+    description: "Pull request number"
     required: true
   github_token:
     description: >-
       Token used to read the PR and post the review comment. The
-      workflow-provided ${{ secrets.GITHUB_TOKEN }} is sufficient — no
-      custom PAT needed — as long as the job grants pull-requests: write.
+      workflow-provided GITHUB_TOKEN secret is sufficient — no custom
+      PAT needed — as long as the job grants pull-requests: write.
     required: true
   gemini_api_key:
     description: "Google Gemini API key (free tier works)."
