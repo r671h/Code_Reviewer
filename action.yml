@@ -1,8 +1,8 @@
-name: "AI Code Review"
-description: >-
-  Reviews a pull request's diff for bugs, security issues, style
-  deviations, and N+1 patterns using an LLM-backed LangGraph agent, and
-  posts the result as a PR comment.
+name: "LangGraph Context-Aware Code Reviewer"
+description: "AI agent that reviews PR diffs with AST-resolved context and posts findings as a comment."
+branding:
+  icon: "eye"
+  color: "purple"
 inputs:
   repo:
     description: "owner/repo of the PR to review, e.g. octocat/hello-world"
