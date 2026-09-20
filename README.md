@@ -35,6 +35,18 @@ removed), and correctly routed the verdict to `REQUEST_CHANGES`. That
 run is what the architecture below is actually built to support, not a
 scenario picked to make the demo look good.
 
+**The Action itself has since run for real, too** — `review.yml`
+dogfoods this repo's own PRs on GitHub's actual runners (not a local
+simulation), and has posted real `APPROVE` / `COMMENT` / `REQUEST_CHANGES`
+comments across this repo's own PR history. It has genuinely caught a
+real bug in its own codebase this way — `src/graph/llm.ts`'s
+`error.errorDetails?.[...]` optional-chaining assumed an array without
+confirming one — and it has also produced a confident but wrong
+`critical` finding (a claimed `SyntaxError` in a character-class regex
+that in fact compiles and runs correctly). Both are left visible in
+this repo's PR history rather than cleaned up, because a review tool's
+false positives are exactly as informative as its true positives.
+
 ## Architecture
 
 ```mermaid
@@ -111,7 +123,7 @@ prompt says not to."
 `(state) => Partial<State>`, or a factory `makeXNode(deps) => (state) =>
 ...` when they need injected dependencies (an MCP tool function, the LLM
 caller, `print`/`postSummaryComment`). Nothing reads from module-level
-globals. That's what makes 77 tests possible without a single real
+globals. That's what makes 137 tests possible without a single real
 network or LLM call in the suite — every dependency is a fake at the
 boundary.
 
@@ -342,20 +354,23 @@ Concretely, in rough priority order:
    syntactic name-matching. The current approach can false-positive if a
    locally shadowed variable happens to share a name with an import or a
    sibling function — a known, documented limitation, not a silent gap.
-4. **Verify the GitHub Action against a real Actions run.** It's written
-   correctly against the GitHub Actions model, but this repo isn't
-   pushed to GitHub yet, so nothing about the workflow has actually been
-   exercised by a runner — everything else in this README has been
-   proven against real API calls; this hasn't, yet.
-5. **Exercise an actually large diff** (500+ lines, many files) end to
-   end. Per-file bounding and patch truncation are implemented and
-   unit-tested, but not proven against a real giant PR.
-6. **Multi-hop context resolution.** Capped at one hop by design for v1;
+4. **Exercise an actually large diff** (500+ lines, many files) end to
+   end through the real Action, not just synthetically. Per-file
+   bounding, patch truncation, and `max_files` are implemented and
+   covered by a large synthetic-PR test (`tests/graph/large-pr.test.ts`
+   — 12 files, one 800+ lines), but not yet proven against a real giant
+   PR on a live runner.
+5. **Multi-hop context resolution.** Capped at one hop by design for v1;
    a function that calls a function that calls a function currently only
    gets context on the first link.
-7. **Non-TS/JS language support** for `get_related_context` — other
+6. **Non-TS/JS language support** for `get_related_context` — other
    file types still get analyzed on diff text alone today, just without
    AST-derived context.
+7. **Tighten the secret-redaction heuristic's false-positive rate.**
+   It's a regex net, not a real secret scanner (`src/graph/secrets.ts`)
+   — it will occasionally flag placeholder-looking strings that aren't
+   real credentials. Acceptable for a heuristic safety net, but worth
+   revisiting if it proves noisy in practice.
 
 Full design history and every resolved/open question is in
 [PLAN.md](PLAN.md), kept up to date across the project rather than
