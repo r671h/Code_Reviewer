@@ -1,5 +1,6 @@
 import type { GetFileContentInput } from "../../schemas/github.js";
-import { GitHubAuthError, GitHubNetworkError, GitHubNotFoundError } from "../errors.js";
+import { GitHubAuthError, GitHubNetworkError, GitHubNotFoundError, GitHubRateLimitError } from "../errors.js";
+import { isGitHubRateLimited } from "./classify-403.js";
 
 export async function getFileContent(input: GetFileContentInput, token: string): Promise<string> {
   const [owner, name] = input.repo.split("/");
@@ -26,7 +27,18 @@ export async function getFileContent(input: GetFileContentInput, token: string):
     );
   }
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
+    throw new GitHubAuthError(
+      `GitHub auth failed fetching file content for ${input.repo}:${input.path} (status ${response.status})`,
+    );
+  }
+  if (response.status === 403) {
+    const bodyText = await response.text().catch(() => "");
+    if (isGitHubRateLimited(response, bodyText)) {
+      throw new GitHubRateLimitError(
+        `GitHub rate limit hit fetching file content for ${input.repo}:${input.path}`,
+      );
+    }
     throw new GitHubAuthError(
       `GitHub auth failed fetching file content for ${input.repo}:${input.path} (status ${response.status})`,
     );
