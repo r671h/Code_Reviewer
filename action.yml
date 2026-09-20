@@ -1,3 +1,7 @@
+# Consumers: pin to a released major tag, not @main —
+#   uses: <owner>/CodeReviewer@v1
+# @v1 always points at the latest v1.y.z release; see "Versioning &
+# releases" in README.md for the full tag scheme and how to cut one.
 name: "LangGraph Context-Aware Code Reviewer"
 description: "AI agent that reviews PR diffs with AST-resolved context and posts findings as a comment."
 branding:

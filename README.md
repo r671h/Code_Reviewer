@@ -235,7 +235,7 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: <your-github-username>/CodeReviewer@main
+      - uses: <your-github-username>/CodeReviewer@v1
         with:
           repo: ${{ github.repository }}
           pr_number: ${{ github.event.pull_request.number }}
@@ -252,12 +252,72 @@ checkout so it works when consumed by a different repo). This repo also
 dogfoods itself: [.github/workflows/review.yml](.github/workflows/review.yml)
 reviews CodeReviewer's own PRs with the local copy of the action.
 
+**Pin to `@v1`, not `@main`.** `main` can carry an unreviewed or
+in-progress change at any moment — pinning to it means a broken commit
+on `main` breaks every consumer immediately, with no way to opt out.
+`@v1` follows the same convention as `actions/checkout@v4` and
+`actions/setup-node@v4`: a floating tag that only ever moves forward to
+a released, tagged commit within that major version. See
+[Versioning & releases](#versioning--releases) below for exactly what
+that tag means and how it's maintained.
+
 ### Tests
 
 ```bash
-npm test              # 77 tests, vitest, nothing hits a real API
+npm test              # vitest, nothing hits a real API
 npx tsc --noEmit      # strict type-check, no emit
 ```
+
+## Versioning & releases
+
+Three kinds of tags, the same convention most published GitHub Actions
+use (`actions/checkout`, `actions/setup-node`, etc.):
+
+- **`vX.Y.Z`** (e.g. `v1.0.1`) — an immutable, specific release. Never
+  moves once pushed; use this if you want a fully pinned, reproducible
+  reference.
+- **`vX`** (e.g. `v1`) — a floating tag that always points at the
+  latest `vX.y.z` release *within that major version*. This is what
+  the README's usage example pins to (`@v1`) and what most consumers
+  should use: you get fixes and backwards-compatible additions
+  automatically, but a breaking change (a new major) never lands on
+  you silently.
+- **`latest`** — a floating tag that always points at the newest
+  release overall, across majors, for anyone who explicitly wants
+  bleeding-edge over stability.
+
+### Cutting a release
+
+There's no release CI yet — for a project this size, a few manual
+commands are simpler and more obviously correct than building and
+maintaining a release pipeline. Run this from an up-to-date `main`,
+once everything intended for the release has merged:
+
+```bash
+git checkout main
+git pull
+
+# 1. Tag the exact commit being released (bump the version as appropriate)
+git tag -a v1.0.1 -m "v1.0.1"
+git push origin v1.0.1
+
+# 2. Move the floating major tag to point at the same commit
+git tag -f v1 v1.0.1
+git push origin v1 --force
+
+# 3. Move the floating "latest" tag to point at the same commit
+git tag -f latest v1.0.1
+git push origin latest --force
+
+# 4. Publish a GitHub Release from the tag (optional, but gives consumers
+#    release notes and shows up in the repo's Releases tab)
+gh release create v1.0.1 --title "v1.0.1" --generate-notes
+```
+
+When a future change is breaking, cut `v2.0.0` and create a *separate*
+`v2` floating tag pointing at it — leave `v1` exactly where it is, so
+nothing already pinned to `@v1` is affected. Only `latest` moves to
+`v2.0.0`, since by definition it means "whatever's newest."
 
 Every node and every MCP tool has an isolated test with the network/LLM
 boundary mocked — CLAUDE.md's "no end-to-end test makes a real API call
