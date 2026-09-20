@@ -19,6 +19,13 @@ inputs:
   gemini_api_key:
     description: "Google Gemini API key (free tier works)."
     required: true
+  max_files:
+    description: >-
+      Maximum number of changed files to analyze. Files beyond this
+      count are skipped (recorded in the review's notes) rather than
+      sent to fetch_context/analyze, so one huge PR can't run unbounded.
+    required: false
+    default: "30"
 runs:
   using: "composite"
   steps:
@@ -36,3 +43,4 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
+        MAX_FILES: ${{ inputs.max_files }}
