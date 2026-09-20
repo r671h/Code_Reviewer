@@ -170,6 +170,15 @@ orchestration, not owning the business logic.
   against the real API, not assumed; fixed (`.min(1)` instead) and
   regression-tested (`tests/schemas/review.test.ts`) so it can't
   silently reappear.
+- **Secrets never reach the LLM in the clear.** `analyze` runs every
+  file's patch and related context through a heuristic scanner
+  (`src/graph/secrets.ts` — AWS access key IDs, private key blocks,
+  long tokens next to `api_key`/`secret`/`token`/`password`) and
+  replaces any match with `[REDACTED]` *before* building the prompt.
+  A match also raises a deterministic `critical`/`security` issue on
+  its own — it doesn't depend on the model noticing the placeholder.
+  Because the raw value is never sent, it can't be echoed back into
+  an issue's explanation and end up quoted in the public PR comment.
 
 ### One-hop, AST-based context — not the whole file, not regex
 

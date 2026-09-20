@@ -131,4 +131,115 @@ describe("analyze node", () => {
     expect(sentContext.length).toBeLessThan(hugeRelatedContext.length);
     expect(sentContext).toContain("truncated");
   });
+
+  describe("secret detection", () => {
+    const AWS_KEY_PATCH = '+  accessKeyId: "AKIAIOSFODNN7EXAMPLE",';
+
+    it("redacts a detected secret in the patch before it ever reaches the LLM", async () => {
+      const analyzeFile = vi.fn().mockResolvedValue({ issues: [] });
+      const node = makeAnalyzeNode({ analyzeFile });
+
+      const state = baseState({
+        fileContexts: [{ path: "src/config.ts", patch: AWS_KEY_PATCH, relatedContext: "" }],
+      });
+
+      await node(state);
+
+      const sentPatch = analyzeFile.mock.calls[0]?.[0]?.patch as string;
+      expect(sentPatch).not.toContain("AKIAIOSFODNN7EXAMPLE");
+      expect(sentPatch).toContain("[REDACTED]");
+    });
+
+    it("redacts a detected secret in relatedContext before it ever reaches the LLM", async () => {
+      const analyzeFile = vi.fn().mockResolvedValue({ issues: [] });
+      const node = makeAnalyzeNode({ analyzeFile });
+
+      const state = baseState({
+        fileContexts: [
+          {
+            path: "src/config.ts",
+            patch: "+x",
+            relatedContext: 'Related context for `configure`:\n- default value accessKeyId: "AKIAIOSFODNN7EXAMPLE"',
+          },
+        ],
+      });
+
+      await node(state);
+
+      const sentContext = analyzeFile.mock.calls[0]?.[0]?.relatedContext as string;
+      expect(sentContext).not.toContain("AKIAIOSFODNN7EXAMPLE");
+      expect(sentContext).toContain("[REDACTED]");
+    });
+
+    it("still sends the (redacted) file to the LLM, so the rest of the diff still gets reviewed", async () => {
+      const analyzeFile = vi.fn().mockResolvedValue({ issues: [] });
+      const node = makeAnalyzeNode({ analyzeFile });
+
+      const state = baseState({
+        fileContexts: [{ path: "src/config.ts", patch: AWS_KEY_PATCH, relatedContext: "" }],
+      });
+
+      await node(state);
+
+      expect(analyzeFile).toHaveBeenCalledTimes(1);
+    });
+
+    it("adds a deterministic critical security issue, independent of what the LLM returns", async () => {
+      const analyzeFile = vi.fn().mockResolvedValue({ issues: [] });
+      const node = makeAnalyzeNode({ analyzeFile });
+
+      const state = baseState({
+        fileContexts: [{ path: "src/config.ts", patch: AWS_KEY_PATCH, relatedContext: "" }],
+      });
+
+      const result = await node(state);
+
+      expect(result.issues).toEqual([
+        expect.objectContaining({ file: "src/config.ts", severity: "critical", category: "security" }),
+      ]);
+    });
+
+    it("never includes the raw secret value in the issue's explanation text", async () => {
+      const analyzeFile = vi.fn().mockResolvedValue({ issues: [] });
+      const node = makeAnalyzeNode({ analyzeFile });
+
+      const state = baseState({
+        fileContexts: [{ path: "src/config.ts", patch: AWS_KEY_PATCH, relatedContext: "" }],
+      });
+
+      const result = await node(state);
+
+      expect(result.issues?.[0]?.explanation).not.toContain("AKIAIOSFODNN7EXAMPLE");
+    });
+
+    it("keeps the LLM's own issues alongside the deterministic secret issue", async () => {
+      const analyzeFile = vi.fn().mockResolvedValue({
+        issues: [{ file: "wrong.ts", line: 5, severity: "warning", category: "style", explanation: "nit" }],
+      });
+      const node = makeAnalyzeNode({ analyzeFile });
+
+      const state = baseState({
+        fileContexts: [{ path: "src/config.ts", patch: AWS_KEY_PATCH, relatedContext: "" }],
+      });
+
+      const result = await node(state);
+
+      expect(result.issues).toHaveLength(2);
+      expect(result.issues?.some((i) => i.category === "security")).toBe(true);
+      expect(result.issues?.some((i) => i.category === "style")).toBe(true);
+    });
+
+    it("adds no secret issue when no pattern is found in patch or relatedContext", async () => {
+      const analyzeFile = vi.fn().mockResolvedValue({ issues: [] });
+      const node = makeAnalyzeNode({ analyzeFile });
+
+      const state = baseState({
+        fileContexts: [{ path: "src/clean.ts", patch: "+export const x = 1;", relatedContext: "" }],
+      });
+
+      const result = await node(state);
+
+      expect(result.issues).toEqual([]);
+    });
+  });
 });

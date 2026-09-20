@@ -46,4 +46,23 @@ describe("format_review node", () => {
     expect(result.reviewText).toContain("src/broken.ts");
     expect(result.reviewText).toContain("model unavailable");
   });
+
+  it("only ever renders issue.explanation verbatim — never echoes raw patch or relatedContext text, so a redacted secret can't resurface here", () => {
+    const state = baseState({
+      issues: [
+        {
+          file: "src/config.ts",
+          line: 1,
+          severity: "critical",
+          category: "security",
+          explanation: "Possible secret detected in this file's diff (an AWS access key ID). Redacted before analysis.",
+        },
+      ],
+    });
+
+    const result = format_review(state);
+
+    expect(result.reviewText).toContain("Possible secret detected");
+    expect(result.reviewText).not.toContain("AKIA");
+  });
 });
