@@ -299,5 +299,11 @@ README.md                    -> functional usage doc (not the portfolio writeup)
   the diff's `position` field for the "create a review" endpoint's
   per-comment anchoring. `post_summary_comment` (implemented) sidesteps
   this entirely by posting one comment instead.
-- The GitHub Action itself is unverified against a real Actions run —
-  see build-order item 13.
+- The GitHub Action has since run for real on GitHub's own Actions
+  runners, repeatedly, dogfooding this repo's own PRs via
+  `.github/workflows/review.yml` (see build-order item 13) — including
+  one real bug it caught in its own codebase and one confident false
+  positive, both left visible in this repo's PR history. Still open:
+  a real giant PR (500+ lines, many files) hasn't been run through it
+  live — only through a synthetic-PR unit test
+  (`tests/graph/large-pr.test.ts`).
