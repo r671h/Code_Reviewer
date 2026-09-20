@@ -1,5 +1,5 @@
 import type { AnalyzeFile } from "../llm.js";
-import { truncatePatch } from "../diff.js";
+import { truncatePatch, truncateRelatedContext } from "../diff.js";
 import type { Issue } from "../../schemas/review.js";
 import type { FileError, GraphStateType } from "../state.js";
 
@@ -19,7 +19,11 @@ export function makeAnalyzeNode(deps: AnalyzeDeps) {
 
     for (const fileContext of state.fileContexts) {
       try {
-        const result = await deps.analyzeFile({ ...fileContext, patch: truncatePatch(fileContext.patch) });
+        const result = await deps.analyzeFile({
+          ...fileContext,
+          patch: truncatePatch(fileContext.patch),
+          relatedContext: truncateRelatedContext(fileContext.relatedContext),
+        });
         for (const issue of result.issues) {
           issues.push({ ...issue, file: fileContext.path });
         }
