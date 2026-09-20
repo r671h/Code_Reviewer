@@ -63,4 +63,29 @@ describe("withRetry", () => {
     expect(onRetry).toHaveBeenNthCalledWith(1, 1, expect.any(Error));
     expect(onRetry).toHaveBeenNthCalledWith(2, 2, expect.any(Error));
   });
+
+  it("uses retryDelayMs's suggested delay instead of the exponential backoff when it returns one", async () => {
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const operation = vi.fn().mockRejectedValue(new Error("rate limited"));
+    const retryDelayMs = vi.fn().mockReturnValue(13_000);
+
+    await withRetry(operation, { maxAttempts: 2, initialDelayMs: 500, backoffFactor: 2, sleep, retryDelayMs }).catch(
+      () => {},
+    );
+
+    expect(retryDelayMs).toHaveBeenCalledWith(expect.any(Error), 500);
+    expect(sleep).toHaveBeenCalledWith(13_000);
+  });
+
+  it("falls back to the exponential backoff delay when retryDelayMs returns undefined", async () => {
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const operation = vi.fn().mockRejectedValue(new Error("ordinary failure"));
+    const retryDelayMs = vi.fn().mockReturnValue(undefined);
+
+    await withRetry(operation, { maxAttempts: 2, initialDelayMs: 500, backoffFactor: 2, sleep, retryDelayMs }).catch(
+      () => {},
+    );
+
+    expect(sleep).toHaveBeenCalledWith(500);
+  });
 });

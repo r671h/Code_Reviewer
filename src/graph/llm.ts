@@ -32,7 +32,36 @@ export function createAnalyzeFile(
     withRetry(async () => {
       const result = await structuredModel.invoke(buildPrompt(path, patch, relatedContext));
       return AnalysisResultSchema.parse(result);
-    }, options.retry);
+    }, { ...options.retry, retryDelayMs: options.retry?.retryDelayMs ?? extractGeminiRetryDelayMs });
+}
+
+interface GoogleApiErrorDetail {
+  "@type"?: string;
+  retryDelay?: string;
+}
+
+interface GoogleApiErrorShape {
+  status?: number;
+  errorDetails?: GoogleApiErrorDetail[];
+}
+
+/**
+ * Extracts the server-suggested retry delay (ms) from a Gemini 429's
+ * RetryInfo detail (`@google/generative-ai` surfaces it as
+ * `error.errorDetails`, e.g. `{ "@type": ".../RetryInfo", retryDelay: "13s" }`),
+ * so a rate-limited call waits as long as the server asked instead of
+ * blindly exponential-backing off. Returns undefined for anything else.
+ */
+export function extractGeminiRetryDelayMs(error: unknown): number | undefined {
+  if (!isGoogleApiErrorShape(error) || error.status !== 429) return undefined;
+
+  const retryInfo = error.errorDetails?.find((detail) => detail["@type"]?.endsWith("RetryInfo"));
+  const match = retryInfo?.retryDelay ? /^(\d+(?:\.\d+)?)s$/.exec(retryInfo.retryDelay) : null;
+  return match?.[1] ? Number(match[1]) * 1000 : undefined;
+}
+
+function isGoogleApiErrorShape(error: unknown): error is GoogleApiErrorShape {
+  return typeof error === "object" && error !== null && "status" in error;
 }
 
 function buildPrompt(path: string, patch: string, relatedContext: string): string {

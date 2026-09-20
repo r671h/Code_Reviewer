@@ -16,6 +16,13 @@ export interface RetryOptions {
   backoffFactor?: number;
   onRetry?: (attempt: number, error: unknown) => void;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Called with the failed error and the delay exponential backoff would
+   * otherwise use. Return a longer delay (e.g. parsed from a 429's
+   * Retry-After/RetryInfo) to wait that long instead; return `undefined`
+   * to keep the default backoff delay.
+   */
+  retryDelayMs?: (error: unknown, defaultDelayMs: number) => number | undefined;
 }
 
 /**
@@ -37,7 +44,9 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
       lastError = error;
       options.onRetry?.(attempt, error);
       if (attempt === maxAttempts) break;
-      await sleep(initialDelayMs * backoffFactor ** (attempt - 1));
+      const backoffDelayMs = initialDelayMs * backoffFactor ** (attempt - 1);
+      const delayMs = options.retryDelayMs?.(error, backoffDelayMs) ?? backoffDelayMs;
+      await sleep(delayMs);
     }
   }
 

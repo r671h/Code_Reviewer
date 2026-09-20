@@ -14,6 +14,10 @@ import { buildReviewGraph } from "./graph/graph.js";
 import { createAnalyzeFile } from "./graph/llm.js";
 import { makePrintReviewNode } from "./graph/nodes/print_review.js";
 import { makePostReviewNode } from "./graph/nodes/post_review.js";
+import { DEFAULT_MAX_FILES } from "./graph/nodes/fetch_diff.js";
+import { ReviewTimeoutError, runWithTimeout } from "./graph/timeout.js";
+
+const DEFAULT_REVIEW_TIMEOUT_MS = 300_000;
 
 config();
 
@@ -28,9 +32,11 @@ if (!repo || !prNumberArg) {
 
 const githubToken = requireEnv("GITHUB_TOKEN");
 const geminiApiKey = requireEnv("GEMINI_API_KEY");
+const maxFiles = parsePositiveIntEnv("MAX_FILES", DEFAULT_MAX_FILES);
+const reviewTimeoutMs = parsePositiveIntEnv("REVIEW_TIMEOUT_MS", DEFAULT_REVIEW_TIMEOUT_MS);
 
 const graph = buildReviewGraph({
-  fetchDiff: { getPrDiff, githubToken },
+  fetchDiff: { getPrDiff, githubToken, maxFiles },
   fetchContext: { getFileContent, getRelatedContext, githubToken },
   analyze: { analyzeFile: createAnalyzeFile(geminiApiKey) },
   deliverReview: post
@@ -38,7 +44,15 @@ const graph = buildReviewGraph({
     : makePrintReviewNode({ print: (text) => console.log(text) }),
 });
 
-await graph.invoke({ repo, prNumber: Number(prNumberArg) });
+try {
+  await runWithTimeout(graph.invoke({ repo, prNumber: Number(prNumberArg) }), reviewTimeoutMs);
+} catch (error) {
+  if (error instanceof ReviewTimeoutError) {
+    console.error(error.message);
+    process.exit(1);
+  }
+  throw error;
+}
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -47,4 +61,12 @@ function requireEnv(name: string): string {
     process.exit(1);
   }
   return value;
+}
+
+function parsePositiveIntEnv(name: string, defaultValue: number): number {
+  const raw = process.env[name];
+  if (!raw) return defaultValue;
+
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
 }

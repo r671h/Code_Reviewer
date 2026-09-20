@@ -195,6 +195,11 @@ cp .env.example .env   # fill in GITHUB_TOKEN and GEMINI_API_KEY
   the target repo.
 - `GEMINI_API_KEY` — free-tier key from
   [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+- `MAX_FILES` (optional, default `30`) — changed files beyond this count
+  are skipped (not sent to fetch_context/analyze) rather than analyzed.
+- `REVIEW_TIMEOUT_MS` (optional, default `300000` / 5 min) — the whole
+  graph run is capped at this; on timeout the process exits with a clear
+  error instead of hanging.
 
 ```bash
 npx tsx src/agent.ts <owner/repo> <pr_number>          # prints the review
@@ -221,6 +226,7 @@ jobs:
           pr_number: ${{ github.event.pull_request.number }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          # max_files: "30"   # optional, this is the default
 ```
 
 The built-in `secrets.GITHUB_TOKEN` is enough — no custom PAT needed —
