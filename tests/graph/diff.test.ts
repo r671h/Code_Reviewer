@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseUnifiedDiff, truncatePatch } from "../../src/graph/diff.js";
+import { parseUnifiedDiff, truncatePatch, truncateRelatedContext } from "../../src/graph/diff.js";
 
 const SAMPLE_DIFF = `diff --git a/src/foo.ts b/src/foo.ts
 index e69de29..b6fc4c6 100644
@@ -94,5 +94,22 @@ describe("truncatePatch", () => {
     expect(result).toContain("+line 499");
     expect(result).not.toContain("+line 500");
     expect(result).toContain("truncated at 500 lines, 100 more line(s) omitted");
+  });
+});
+
+describe("truncateRelatedContext", () => {
+  it("returns the text unchanged when at or under the char limit", () => {
+    const text = "a".repeat(8000);
+
+    expect(truncateRelatedContext(text, 8000)).toBe(text);
+  });
+
+  it("truncates text over the char limit and notes how many characters were omitted", () => {
+    const text = "a".repeat(9000);
+
+    const result = truncateRelatedContext(text, 8000);
+
+    expect(result.startsWith("a".repeat(8000))).toBe(true);
+    expect(result).toContain("truncated at 8000 characters, 1000 more character(s) omitted");
   });
 });

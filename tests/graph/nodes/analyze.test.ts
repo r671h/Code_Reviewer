@@ -108,4 +108,27 @@ describe("analyze node", () => {
     expect(sentPatch.split("\n").length).toBeLessThanOrEqual(501);
     expect(sentPatch).toContain("truncated at 500 lines");
   });
+
+  it("caps an oversized aggregated relatedContext before sending it to the LLM, so a file with many changed symbols can't blow up the prompt", async () => {
+    const analyzeFile = vi.fn().mockResolvedValue({ issues: [] });
+    const node = makeAnalyzeNode({ analyzeFile });
+
+    // Simulates fetch_context concatenating get_related_context output for
+    // dozens of changed symbols in one large file — each call is
+    // individually budgeted, but nothing capped the sum until now.
+    const hugeRelatedContext = Array.from(
+      { length: 60 },
+      (_, i) =>
+        `Related context for \`fn${i}\`:\n- \`function fn${i}(x: number): number\` (from src/lib.ts)\n  /** Computes something involving fn${i} and its neighbors in the pipeline. */`,
+    ).join("\n\n");
+    const state = baseState({
+      fileContexts: [{ path: "src/huge.ts", patch: "+x", relatedContext: hugeRelatedContext }],
+    });
+
+    await node(state);
+
+    const sentContext = analyzeFile.mock.calls[0]?.[0]?.relatedContext as string;
+    expect(sentContext.length).toBeLessThan(hugeRelatedContext.length);
+    expect(sentContext).toContain("truncated");
+  });
 });

@@ -82,3 +82,5 @@ calling anything done:
   only `.env.example` should change.
 - **Scope**: flag unrequested UI/dashboard code, and flag any new
   dependency that wasn't checked against `package.json` first.
+
+  Do not write Claude Code as co-author and do not write in description "🤖 Generated with Claude Code", dont use emoji

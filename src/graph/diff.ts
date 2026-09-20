@@ -25,6 +25,22 @@ export function truncatePatch(patch: string, maxLines: number = MAX_PATCH_LINES)
   );
 }
 
+export const MAX_RELATED_CONTEXT_CHARS = 8000;
+
+/**
+ * Caps the aggregated related-context text (one file's changed symbols,
+ * concatenated) at `maxChars`. `get_related_context` already budgets each
+ * individual symbol's output, but a file with many changed symbols has no
+ * limit on the sum — this bounds the worst case so the prompt sent to the
+ * LLM stays predictable regardless of how many symbols changed.
+ */
+export function truncateRelatedContext(text: string, maxChars: number = MAX_RELATED_CONTEXT_CHARS): string {
+  if (text.length <= maxChars) return text;
+
+  const omitted = text.length - maxChars;
+  return `${text.slice(0, maxChars)}\n... (related context truncated at ${maxChars} characters, ${omitted} more character(s) omitted)`;
+}
+
 const FILE_HEADER = /^diff --git a\/.* b\/(.*)$/;
 const NEW_FILE_PATH = /^\+\+\+ (?:b\/(.*)|\/dev\/null)$/;
 const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
