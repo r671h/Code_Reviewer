@@ -1,5 +1,6 @@
 import type { PostSummaryCommentInput } from "../../schemas/github.js";
-import { GitHubAuthError, GitHubNetworkError, GitHubNotFoundError } from "../errors.js";
+import { GitHubAuthError, GitHubNetworkError, GitHubNotFoundError, GitHubRateLimitError } from "../errors.js";
+import { isGitHubRateLimited } from "./classify-403.js";
 
 export interface PostedComment {
   id: number;
@@ -38,7 +39,16 @@ export async function postSummaryComment(input: PostSummaryCommentInput, token: 
     );
   }
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
+    throw new GitHubAuthError(
+      `GitHub auth failed posting comment on ${input.repo}#${input.pr_number} (status ${response.status})`,
+    );
+  }
+  if (response.status === 403) {
+    const bodyText = await response.text().catch(() => "");
+    if (isGitHubRateLimited(response, bodyText)) {
+      throw new GitHubRateLimitError(`GitHub rate limit hit posting comment on ${input.repo}#${input.pr_number}`);
+    }
     throw new GitHubAuthError(
       `GitHub auth failed posting comment on ${input.repo}#${input.pr_number} (status ${response.status})`,
     );

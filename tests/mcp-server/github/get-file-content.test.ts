@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getFileContent } from "../../../src/mcp-server/github/get-file-content.js";
-import { GitHubAuthError, GitHubNetworkError, GitHubNotFoundError } from "../../../src/mcp-server/errors.js";
+import {
+  GitHubAuthError,
+  GitHubNetworkError,
+  GitHubNotFoundError,
+  GitHubRateLimitError,
+} from "../../../src/mcp-server/errors.js";
 
 const FAKE_TOKEN = "fake-token";
 
@@ -9,6 +14,7 @@ function mockFetchOnce(response: Partial<Response> & { ok: boolean; status: numb
     "fetch",
     vi.fn().mockResolvedValue({
       text: async () => "",
+      headers: new Headers(),
       ...response,
     } as Response),
   );
@@ -88,6 +94,30 @@ describe("getFileContent", () => {
     await expect(
       getFileContent({ repo: "octocat/hello-world", path: "src/index.ts" }, FAKE_TOKEN),
     ).rejects.toThrow(GitHubAuthError);
+  });
+
+  it("throws GitHubAuthError on a plain 403 with no rate-limit signal", async () => {
+    mockFetchOnce({ ok: false, status: 403, text: async () => "Resource not accessible by integration" });
+
+    await expect(
+      getFileContent({ repo: "octocat/hello-world", path: "src/index.ts" }, FAKE_TOKEN),
+    ).rejects.toThrow(GitHubAuthError);
+  });
+
+  it("throws GitHubRateLimitError on a 403 with x-ratelimit-remaining: 0", async () => {
+    mockFetchOnce({ ok: false, status: 403, headers: new Headers({ "x-ratelimit-remaining": "0" }) });
+
+    await expect(
+      getFileContent({ repo: "octocat/hello-world", path: "src/index.ts" }, FAKE_TOKEN),
+    ).rejects.toThrow(GitHubRateLimitError);
+  });
+
+  it("throws GitHubRateLimitError on a 403 with a retry-after header (secondary rate limit)", async () => {
+    mockFetchOnce({ ok: false, status: 403, headers: new Headers({ "retry-after": "60" }) });
+
+    await expect(
+      getFileContent({ repo: "octocat/hello-world", path: "src/index.ts" }, FAKE_TOKEN),
+    ).rejects.toThrow(GitHubRateLimitError);
   });
 
   it("throws GitHubNetworkError when the request itself fails", async () => {

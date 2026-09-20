@@ -22,6 +22,14 @@ export class GitHubNotFoundError extends Error {
   }
 }
 
+export class GitHubRateLimitError extends Error {
+  readonly category = "rate_limit" as const;
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "GitHubRateLimitError";
+  }
+}
+
 export class SymbolNotFoundError extends Error {
   readonly category = "not_found" as const;
   constructor(symbol: string, path: string) {
@@ -33,5 +41,6 @@ export class SymbolNotFoundError extends Error {
 export type GitHubMcpError =
   | GitHubNetworkError
   | GitHubAuthError
+  | GitHubRateLimitError
   | GitHubNotFoundError
   | SymbolNotFoundError;

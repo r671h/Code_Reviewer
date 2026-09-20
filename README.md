@@ -125,10 +125,16 @@ discipline), and is genuinely independent of this specific graph:
 `src/mcp-server/index.ts` runs a real, spec-compliant MCP server over
 stdio, so the same tools could be wired into Claude Desktop or any other
 MCP client tomorrow, unmodified. Each tool also throws a *typed* error
-(`GitHubNetworkError` / `GitHubAuthError` / `GitHubNotFoundError`, each
-carrying a `category`), not a generic `Error` — so a caller can
-distinguish "the PR doesn't exist" from "GitHub is down" from "the token
-is bad" instead of pattern-matching a message string.
+(`GitHubNetworkError` / `GitHubAuthError` / `GitHubRateLimitError` /
+`GitHubNotFoundError`, each carrying a `category`), not a generic
+`Error` — so a caller can distinguish "the PR doesn't exist" from
+"GitHub is down" from "the token is bad" instead of pattern-matching a
+message string. `GitHubRateLimitError` specifically exists because
+GitHub returns the *same* 403 for a bad/insufficient token and for
+rate limiting (primary: `x-ratelimit-remaining: 0`; secondary/abuse
+detection: a `retry-after` header and/or "rate limit" in the body) —
+conflating the two as one auth error misleads diagnosis
+(`src/mcp-server/github/classify-403.ts`).
 
 ### Why LangGraph, not a prompt chain
 
@@ -145,8 +151,8 @@ orchestration, not owning the business logic.
 
 ### Error handling & resilience
 
-- **Typed errors at every GitHub boundary** — network / auth / not-found
-  / symbol-not-found, never a bare `Error`.
+- **Typed errors at every GitHub boundary** — network / auth /
+  rate_limit / not-found / symbol-not-found, never a bare `Error`.
 - **Retry wraps the LLM call specifically**, not everything —
   `withRetry` (`src/graph/retry.ts`): exponential backoff (500ms base,
   ×2 factor), max 3 attempts, because the LLM call is the actually flaky,

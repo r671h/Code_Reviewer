@@ -1,5 +1,6 @@
 import type { GetPrDiffInput } from "../../schemas/github.js";
-import { GitHubAuthError, GitHubNetworkError, GitHubNotFoundError } from "../errors.js";
+import { GitHubAuthError, GitHubNetworkError, GitHubNotFoundError, GitHubRateLimitError } from "../errors.js";
+import { isGitHubRateLimited } from "./classify-403.js";
 
 export async function getPrDiff(input: GetPrDiffInput, token: string): Promise<string> {
   const [owner, name] = input.repo.split("/");
@@ -22,7 +23,16 @@ export async function getPrDiff(input: GetPrDiffInput, token: string): Promise<s
     );
   }
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
+    throw new GitHubAuthError(
+      `GitHub auth failed fetching PR diff for ${input.repo}#${input.pr_number} (status ${response.status})`,
+    );
+  }
+  if (response.status === 403) {
+    const bodyText = await response.text().catch(() => "");
+    if (isGitHubRateLimited(response, bodyText)) {
+      throw new GitHubRateLimitError(`GitHub rate limit hit fetching PR diff for ${input.repo}#${input.pr_number}`);
+    }
     throw new GitHubAuthError(
       `GitHub auth failed fetching PR diff for ${input.repo}#${input.pr_number} (status ${response.status})`,
     );
