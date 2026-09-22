@@ -247,9 +247,16 @@ README.md                    -> functional usage doc (not the portfolio writeup)
 11. ~~CLI entry point (`agent.ts`)~~ **Done**: `agent.ts <owner/repo>
     <pr_number> [--post]`. Verified live in print mode
     (`r671h/MyMessenger#9`, found the same real CORS issue as the earlier
-    graph-level run). Not yet verified live in `--post` mode — that
-    posts a real, visible PR comment, so it needs an explicit go-ahead
-    before running rather than being run unprompted.
+    graph-level run). Verified live in `--post` mode too
+    (`r671h/MyMessenger#9`, comment id `5776561792`): posted a real
+    `REQUEST_CHANGES` verdict with a critical security issue found in
+    `server/index.ts`. Caveat from that run: `agent.ts` logs nothing on
+    a successful `--post`, so a re-run isn't visibly distinguishable
+    from a first run — a second invocation posted a duplicate comment,
+    which had to be deleted by hand. Fixed: `agent.ts` now logs
+    `Posted review comment on <repo>#<pr>` after a successful `--post`
+    run, so a re-run is no longer silently indistinguishable from a
+    first run.
 12. ~~`post_summary_comment` MCP tool + `post_review` node~~ **Done**,
     unit-tested (mocked `fetch`/mocked tool call, no real posts in the
     suite).
