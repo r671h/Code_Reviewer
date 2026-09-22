@@ -46,6 +46,9 @@ const graph = buildReviewGraph({
 
 try {
   await runWithTimeout(graph.invoke({ repo, prNumber: Number(prNumberArg) }), reviewTimeoutMs);
+  if (post) {
+    console.log(`Posted review comment on ${repo}#${prNumberArg}`);
+  }
 } catch (error) {
   if (error instanceof ReviewTimeoutError) {
     console.error(error.message);
