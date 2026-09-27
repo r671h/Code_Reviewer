@@ -32,12 +32,18 @@ comment on the PR.
    entry so `analyze` can proceed on diff alone.
 3. **analyze** — iterates `fileContexts`; one Gemini call per file with
    Zod-schema-constrained structured output (`AnalysisResultSchema`),
-   wrapped in `withRetry` (exponential backoff, max 3 attempts). A file
+   wrapped in `withRetry` (exponential backoff, max 3 attempts; permanent
+   Gemini 4xx errors other than 408/429 fail immediately). Instructions
+   go in a system message, the PR's untrusted content only in the user
+   message. Model issues whose line is outside every hunk of the file's
+   diff are dropped. A file
    whose analysis exhausts retries is recorded as a `fileError` (stage
    `analyze`) and skipped — same resilience policy as `fetch_context`,
    not an abort.
 4. **decide_verdict** — pure function: `REQUEST_CHANGES` if any issue is
-   `critical`, else `COMMENT` if any issues exist, else `APPROVE`.
+   `critical`, else `COMMENT` if any issues exist, else `COMMENT` if any
+   file failed analysis or was skipped (review incomplete — not an
+   approval; `format_no_issues` says so), else `APPROVE`.
 5. **conditional edge** on `decide_verdict` → `format_review` (issues
    exist) or `format_no_issues` (none) — the conditional-routing
    showcase, and it doubles as the "no issues found" edge case.
@@ -71,8 +77,12 @@ than one file's patch — the actual fix for the >500-line-diff edge case),
 and a single file's failure still doesn't abort the run. What `Send`
 would add on top is graph-level parallelism/isolation between files,
 which wasn't worth gating this delivery on without dedicated verification
-of `Send`'s typed integration in this LangGraph version. Valid future
-upgrade, not a correctness gap today.
+of `Send`'s typed integration in this LangGraph version. Parallelism
+itself no longer needs `Send`: both nodes now process files through
+`mapWithConcurrency` (`src/graph/concurrency.ts`), up to `CONCURRENCY`
+(default 4) at a time, results kept in file order — added after a live
+30-file review took 3m15s sequentially, close to the 5-minute
+`REVIEW_TIMEOUT_MS` default.
 
 ### State shape (`src/graph/state.ts`, via `Annotation.Root`)
 ```

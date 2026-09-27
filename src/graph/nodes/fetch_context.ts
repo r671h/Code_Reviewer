@@ -1,6 +1,7 @@
 import type { getFileContent } from "../../mcp-server/github/get-file-content.js";
 import type { getRelatedContext } from "../../mcp-server/github/get-related-context.js";
 import { findChangedSymbols } from "../../mcp-server/github/related-context-ast.js";
+import { mapWithConcurrency } from "../concurrency.js";
 import type { ChangedFile } from "../diff.js";
 import type { FileContext, FileError, GraphStateType } from "../state.js";
 
@@ -8,22 +9,28 @@ export interface FetchContextDeps {
   getFileContent: typeof getFileContent;
   getRelatedContext: typeof getRelatedContext;
   githubToken: string;
+  /**
+   * Max files whose context is fetched at once. Kept modest: GitHub's
+   * secondary rate limits penalize bursts of concurrent requests.
+   */
+  concurrency?: number;
 }
+
+export const DEFAULT_FETCH_CONTEXT_CONCURRENCY = 4;
 
 const TS_FILE = /\.tsx?$/;
 
 export function makeFetchContextNode(deps: FetchContextDeps) {
+  const concurrency = deps.concurrency ?? DEFAULT_FETCH_CONTEXT_CONCURRENCY;
+
   return async function fetch_context(state: GraphStateType): Promise<Partial<GraphStateType>> {
-    const fileContexts: FileContext[] = [];
-    const fileErrors: FileError[] = [];
+    const pr = { repo: state.repo, headSha: state.headSha };
+    const perFile = await mapWithConcurrency(state.files, concurrency, (file) => buildFileContext(pr, file, deps));
 
-    for (const file of state.files) {
-      const { context, errors } = await buildFileContext({ repo: state.repo, headSha: state.headSha }, file, deps);
-      fileContexts.push(context);
-      fileErrors.push(...errors);
-    }
-
-    return { fileContexts, fileErrors };
+    return {
+      fileContexts: perFile.map((result) => result.context),
+      fileErrors: perFile.flatMap((result) => result.errors),
+    };
   };
 }
 

@@ -41,6 +41,59 @@ export function truncateRelatedContext(text: string, maxChars: number = MAX_RELA
   return `${text.slice(0, maxChars)}\n... (related context truncated at ${maxChars} characters, ${omitted} more character(s) omitted)`;
 }
 
+export interface LineRange {
+  /** 1-indexed, inclusive. */
+  start: number;
+  end: number;
+}
+
+const HUNK_NEW_RANGE = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+
+/**
+ * The new-file line ranges each hunk of `patch` covers (changed lines plus
+ * their surrounding context lines). A pure-deletion hunk (`+N,0`) covers
+ * no new-file lines and is omitted.
+ */
+export function hunkLineRanges(patch: string): LineRange[] {
+  const ranges: LineRange[] = [];
+  for (const line of patch.split("\n")) {
+    const match = HUNK_NEW_RANGE.exec(line);
+    if (!match) continue;
+    const start = Number(match[1]);
+    const count = match[2] === undefined ? 1 : Number(match[2]);
+    if (count > 0) ranges.push({ start, end: start + count - 1 });
+  }
+  return ranges;
+}
+
+/**
+ * Maps the index (within `patch.split("\n")`) of every added (`+`) line to
+ * its 1-indexed line number in the new file.
+ */
+export function addedLineNumbers(patch: string): Map<number, number> {
+  const added = new Map<number, number>();
+  let newLine = 0;
+  let inHunk = false;
+
+  patch.split("\n").forEach((line, index) => {
+    const hunk = HUNK_NEW_RANGE.exec(line);
+    if (hunk) {
+      inHunk = true;
+      newLine = Number(hunk[1]);
+      return;
+    }
+    if (!inHunk) return;
+    if (line.startsWith("+")) {
+      added.set(index, newLine);
+      newLine += 1;
+    } else if (line.startsWith(" ")) {
+      newLine += 1;
+    }
+  });
+
+  return added;
+}
+
 const FILE_HEADER = /^diff --git a\/.* b\/(.*)$/;
 const NEW_FILE_PATH = /^\+\+\+ (?:b\/(.*)|\/dev\/null)$/;
 const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;

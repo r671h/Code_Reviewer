@@ -65,6 +65,26 @@ describe("fetch_context node", () => {
     );
   });
 
+  it("fetches context for up to `concurrency` files at once, keeping results in file order", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const getFileContent = vi.fn(async ({ path }: { path: string }) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      const index = Number(/f(\d+)/.exec(path)?.[1]);
+      await new Promise((r) => setTimeout(r, (6 - index) * 3));
+      inFlight -= 1;
+      return "const x = 1;\n";
+    });
+    const node = makeFetchContextNode({ getFileContent, getRelatedContext: vi.fn(), githubToken: "t", concurrency: 2 });
+
+    const files = Array.from({ length: 6 }, (_, i) => ({ path: `src/f${i}.ts`, patch: "+x", changedLines: [1] }));
+    const result = await node(baseState({ files }));
+
+    expect(maxInFlight).toBe(2);
+    expect(result.fileContexts?.map((c) => c.path)).toEqual(files.map((f) => f.path));
+  });
+
   it("skips AST analysis for non-TS files, leaving relatedContext empty", async () => {
     const getFileContent = vi.fn();
     const getRelatedContext = vi.fn();

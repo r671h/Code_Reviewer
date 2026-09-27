@@ -1,5 +1,7 @@
 export interface SecretMatch {
   kind: "aws_access_key_id" | "private_key_block" | "keyword_adjacent_token";
+  /** 0-based index of the line (in the scanned text) the match is on. */
+  lineIndex: number;
 }
 
 export interface SecretScanResult {
@@ -36,13 +38,35 @@ const PATTERNS: SecretPattern[] = [
 export function redactSecrets(text: string): SecretScanResult {
   const matches: SecretMatch[] = [];
 
-  let redacted = text;
-  for (const { kind, regex } of PATTERNS) {
-    redacted = redacted.replace(regex, () => {
-      matches.push({ kind });
-      return "[REDACTED]";
-    });
-  }
+  // Every pattern is single-line, so scanning line by line finds the same
+  // matches while recording where each one is.
+  const redactedLines = text.split("\n").map((line, lineIndex) => {
+    let redacted = line;
+    for (const { kind, regex } of PATTERNS) {
+      redacted = redacted.replace(regex, (match) => {
+        if (isDocumentedExample(match)) return match;
+        matches.push({ kind, lineIndex });
+        return "[REDACTED]";
+      });
+    }
+    return redacted;
+  });
 
-  return { redacted, matches };
+  return { redacted: redactedLines.join("\n"), matches };
+}
+
+/**
+ * Placeholder credentials published in AWS's own documentation. They are
+ * never valid, and appear in countless READMEs and test fixtures — flagging
+ * them as critical only teaches people to ignore the scanner.
+ */
+const DOCUMENTED_EXAMPLES = [
+  "AKIAIOSFODNN7EXAMPLE",
+  "AKIAI44QH8DHBEXAMPLE",
+  "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+  "je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY",
+];
+
+function isDocumentedExample(match: string): boolean {
+  return DOCUMENTED_EXAMPLES.some((example) => match.includes(example));
 }
