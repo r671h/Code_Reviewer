@@ -7,6 +7,7 @@
 import { config } from "dotenv";
 import { getFileContent } from "../src/mcp-server/github/get-file-content.js";
 import { getPrDiff } from "../src/mcp-server/github/get-pr-diff.js";
+import { getPrHeadSha } from "../src/mcp-server/github/get-pr-head-sha.js";
 import { getRelatedContext } from "../src/mcp-server/github/get-related-context.js";
 import { buildReviewGraph } from "../src/graph/graph.js";
 import { createAnalyzeFile } from "../src/graph/llm.js";
@@ -26,7 +27,7 @@ const geminiApiKey = process.env.GEMINI_API_KEY;
 if (!geminiApiKey) throw new Error("GEMINI_API_KEY environment variable is required");
 
 const graph = buildReviewGraph({
-  fetchDiff: { getPrDiff, githubToken },
+  fetchDiff: { getPrDiff, getPrHeadSha, githubToken },
   fetchContext: { getFileContent, getRelatedContext, githubToken },
   analyze: { analyzeFile: createAnalyzeFile(geminiApiKey) },
   deliverReview: makePrintReviewNode({ print: (text) => console.log(text) }),

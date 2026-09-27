@@ -8,6 +8,7 @@
 import { config } from "dotenv";
 import { getFileContent } from "./mcp-server/github/get-file-content.js";
 import { getPrDiff } from "./mcp-server/github/get-pr-diff.js";
+import { getPrHeadSha } from "./mcp-server/github/get-pr-head-sha.js";
 import { getRelatedContext } from "./mcp-server/github/get-related-context.js";
 import { postSummaryComment } from "./mcp-server/github/post-summary-comment.js";
 import { buildReviewGraph } from "./graph/graph.js";
@@ -36,7 +37,7 @@ const maxFiles = parsePositiveIntEnv("MAX_FILES", DEFAULT_MAX_FILES);
 const reviewTimeoutMs = parsePositiveIntEnv("REVIEW_TIMEOUT_MS", DEFAULT_REVIEW_TIMEOUT_MS);
 
 const graph = buildReviewGraph({
-  fetchDiff: { getPrDiff, githubToken, maxFiles },
+  fetchDiff: { getPrDiff, getPrHeadSha, githubToken, maxFiles },
   fetchContext: { getFileContent, getRelatedContext, githubToken },
   analyze: { analyzeFile: createAnalyzeFile(geminiApiKey) },
   deliverReview: post

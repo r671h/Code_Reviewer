@@ -3,11 +3,13 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   GetFileContentInputSchema,
   GetPrDiffInputSchema,
+  GetPrHeadShaInputSchema,
   GetRelatedContextInputSchema,
   PostSummaryCommentInputSchema,
 } from "../schemas/github.js";
 import { getFileContent } from "./github/get-file-content.js";
 import { getPrDiff } from "./github/get-pr-diff.js";
+import { getPrHeadSha } from "./github/get-pr-head-sha.js";
 import { getRelatedContext } from "./github/get-related-context.js";
 import { postSummaryComment } from "./github/post-summary-comment.js";
 import type { GitHubMcpError } from "./errors.js";
@@ -23,6 +25,16 @@ export function createGithubMcpServer(githubToken: string): McpServer {
       inputSchema: GetPrDiffInputSchema.shape,
     },
     (input) => toToolResult(() => getPrDiff(input, githubToken)),
+  );
+
+  server.registerTool(
+    "get_pr_head_sha",
+    {
+      title: "Get PR head SHA",
+      description: "Returns the SHA of a pull request's head commit (the ref to read changed files at).",
+      inputSchema: GetPrHeadShaInputSchema.shape,
+    },
+    (input) => toToolResult(() => getPrHeadSha(input, githubToken)),
   );
 
   server.registerTool(

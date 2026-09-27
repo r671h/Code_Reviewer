@@ -12,6 +12,7 @@ function baseState(overrides: Partial<GraphStateType> = {}): GraphStateType {
   return {
     repo: "octocat/hello-world",
     prNumber: 42,
+    headSha: undefined,
     files: [],
     fileContexts: [],
     issues: [],
@@ -40,6 +41,28 @@ describe("fetch_context node", () => {
       "fake-token",
     );
     expect(result.fileContexts?.[0]?.relatedContext).toContain("Related context for `target`");
+  });
+
+  it("reads the file and its related context at the PR's head SHA when one is in state", async () => {
+    const getFileContent = vi.fn().mockResolvedValue(TS_SOURCE);
+    const getRelatedContext = vi.fn().mockResolvedValue("Related context for `target`:\n(none)");
+    const node = makeFetchContextNode({ getFileContent, getRelatedContext, githubToken: "fake-token" });
+
+    const state = baseState({
+      headSha: "abc123",
+      files: [{ path: "src/target.ts", patch: "@@ -1,1 +1,1 @@\n+  return x + 1;", changedLines: [2] }],
+    });
+
+    await node(state);
+
+    expect(getFileContent).toHaveBeenCalledWith(
+      { repo: "octocat/hello-world", path: "src/target.ts", ref: "abc123" },
+      "fake-token",
+    );
+    expect(getRelatedContext).toHaveBeenCalledWith(
+      { repo: "octocat/hello-world", path: "src/target.ts", symbol: "target", ref: "abc123" },
+      "fake-token",
+    );
   });
 
   it("skips AST analysis for non-TS files, leaving relatedContext empty", async () => {

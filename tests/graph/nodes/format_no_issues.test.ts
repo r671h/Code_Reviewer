@@ -6,6 +6,7 @@ function baseState(overrides: Partial<GraphStateType> = {}): GraphStateType {
   return {
     repo: "octocat/hello-world",
     prNumber: 42,
+    headSha: undefined,
     files: [{ path: "src/foo.ts", patch: "+x", changedLines: [1] }],
     fileContexts: [],
     issues: [],
