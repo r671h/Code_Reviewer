@@ -34,6 +34,37 @@ describe("format_no_issues node", () => {
     expect(result.reviewText).toContain("not found");
   });
 
+  it("says the review is incomplete, not clean, when some files could not be analyzed", () => {
+    const result = format_no_issues(
+      baseState({
+        verdict: "COMMENT",
+        files: [
+          { path: "src/ok.ts", patch: "+x", changedLines: [1] },
+          { path: "src/failed.ts", patch: "+y", changedLines: [1] },
+        ],
+        fileErrors: [
+          { path: "src/failed.ts", stage: "analyze", message: "402 Payment Required" },
+          { path: "src/skipped.ts", stage: "skipped", message: "exceeding max_files" },
+        ],
+      }),
+    );
+
+    expect(result.reviewText).toMatch(/incomplete/i);
+    expect(result.reviewText).toContain("1 of 3 changed file(s)");
+    expect(result.reviewText).not.toContain("No issues found across");
+  });
+
+  it("says the review is incomplete when every file failed analysis", () => {
+    const result = format_no_issues(
+      baseState({
+        verdict: "COMMENT",
+        fileErrors: [{ path: "src/foo.ts", stage: "analyze", message: "402 Payment Required" }],
+      }),
+    );
+
+    expect(result.reviewText).toContain("0 of 1 changed file(s)");
+  });
+
   it("handles an empty diff (0 files reviewed) without fabricating anything", () => {
     const result = format_no_issues(baseState({ files: [] }));
 
