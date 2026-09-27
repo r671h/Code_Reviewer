@@ -1,5 +1,5 @@
 import type { AnalyzeFile } from "../llm.js";
-import { hunkLineRanges, truncatePatch, truncateRelatedContext, type LineRange } from "../diff.js";
+import { addedLineNumbers, hunkLineRanges, truncatePatch, truncateRelatedContext, type LineRange } from "../diff.js";
 import { redactSecrets, type SecretMatch } from "../secrets.js";
 import type { Issue } from "../../schemas/review.js";
 import { mapWithConcurrency } from "../concurrency.js";
@@ -45,19 +45,22 @@ export function makeAnalyzeNode(deps: AnalyzeDeps) {
 
 async function analyzeOneFile(fileContext: FileContext, analyzeFile: AnalyzeFile): Promise<FileAnalysis> {
   const issues: Issue[] = [];
-  const patchScan = redactSecrets(truncatePatch(fileContext.patch));
-  const contextScan = redactSecrets(truncateRelatedContext(fileContext.relatedContext));
-  const secretMatches = [...patchScan.matches, ...contextScan.matches];
+  // Scan the full patch (so a secret past the truncation point is still
+  // caught), then truncate the redacted text; truncation is line-based, so
+  // the order doesn't change what the LLM sees.
+  const patchScan = redactSecrets(fileContext.patch);
+  const contextScan = redactSecrets(fileContext.relatedContext);
 
-  if (secretMatches.length > 0) {
-    issues.push(secretIssue(fileContext.path, secretMatches));
+  const added = secretsOnAddedLines(fileContext.patch, patchScan.matches);
+  if (added.length > 0) {
+    issues.push(secretIssue(fileContext.path, added));
   }
 
   try {
     const result = await analyzeFile({
       ...fileContext,
-      patch: patchScan.redacted,
-      relatedContext: contextScan.redacted,
+      patch: truncatePatch(patchScan.redacted),
+      relatedContext: truncateRelatedContext(contextScan.redacted),
     });
     const ranges = hunkLineRanges(fileContext.patch);
     for (const issue of result.issues) {
@@ -82,20 +85,41 @@ const SECRET_KIND_LABELS: Record<SecretMatch["kind"], string> = {
   keyword_adjacent_token: "a value that looks like a credential (api_key/secret/token/password)",
 };
 
+interface AddedSecret {
+  kind: SecretMatch["kind"];
+  /** 1-indexed line in the new file. */
+  line: number;
+}
+
+/**
+ * Keeps only matches on lines this PR adds. A secret on a context line
+ * already existed before the PR, and one on a removed line is being taken
+ * out — neither is something this change introduces. (Both are still
+ * redacted before the LLM call.)
+ */
+function secretsOnAddedLines(patch: string, matches: SecretMatch[]): AddedSecret[] {
+  const lineNumbers = addedLineNumbers(patch);
+  return matches.flatMap((match) => {
+    const line = lineNumbers.get(match.lineIndex);
+    return line === undefined ? [] : [{ kind: match.kind, line }];
+  });
+}
+
 /**
  * A deterministic, rule-based finding — not produced by (or dependent on)
  * the LLM, so it doesn't rely on the model noticing a `[REDACTED]`
  * placeholder. Never interpolates the matched value itself, only the kind.
  */
-function secretIssue(path: string, matches: SecretMatch[]): Issue {
-  const kinds = [...new Set(matches.map((m) => SECRET_KIND_LABELS[m.kind]))];
+function secretIssue(path: string, secrets: AddedSecret[]): Issue {
+  const kinds = [...new Set(secrets.map((s) => SECRET_KIND_LABELS[s.kind]))];
+  const lines = [...new Set(secrets.map((s) => s.line))].sort((a, b) => a - b);
   return {
     file: path,
-    line: 1,
+    line: lines[0] ?? 1,
     severity: "critical",
     category: "security",
     explanation:
-      `Possible secret detected in this file's diff (${kinds.join(", ")}). ` +
+      `Possible secret added by this PR (${kinds.join(", ")}) on line(s) ${lines.join(", ")}. ` +
       "The matched content was redacted before this file was sent to the LLM. " +
       "If this is a real credential, rotate it and remove it from the diff.",
   };

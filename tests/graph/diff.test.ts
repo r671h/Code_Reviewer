@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hunkLineRanges, parseUnifiedDiff, truncatePatch, truncateRelatedContext } from "../../src/graph/diff.js";
+import { addedLineNumbers, hunkLineRanges, parseUnifiedDiff, truncatePatch, truncateRelatedContext } from "../../src/graph/diff.js";
 
 const SAMPLE_DIFF = `diff --git a/src/foo.ts b/src/foo.ts
 index e69de29..b6fc4c6 100644
@@ -102,6 +102,24 @@ describe("hunkLineRanges", () => {
 
   it("ignores hunk-header-looking text inside a line's content", () => {
     expect(hunkLineRanges("@@ -1,1 +1,1 @@\n+const s = '@@ -9,9 +90,9 @@';")).toEqual([{ start: 1, end: 1 }]);
+  });
+});
+
+describe("addedLineNumbers", () => {
+  it("maps each added line's index in the patch to its new-file line number", () => {
+    const patch = ["@@ -10,3 +10,4 @@", " a", "-b", "+B", "+C", " d", "@@ -40,1 +41,2 @@", " e", "+f"].join("\n");
+
+    expect(addedLineNumbers(patch)).toEqual(
+      new Map([
+        [3, 11],
+        [4, 12],
+        [8, 42],
+      ]),
+    );
+  });
+
+  it("returns an empty map for a patch with no added lines", () => {
+    expect(addedLineNumbers("@@ -1,2 +1,0 @@\n-a\n-b")).toEqual(new Map());
   });
 });
 

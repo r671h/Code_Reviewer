@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { redactSecrets } from "../../src/graph/secrets.js";
 
+// Built by concatenation so this file's own diff never contains a scanner match.
+const FAKE_AWS_KEY = "AKIA" + "Q3EGRV7XJ2MPLK4N";
+
 describe("redactSecrets", () => {
   describe("realistic secret patterns", () => {
     it("detects and redacts an AWS access key ID", () => {
-      const text = 'const client = new S3Client({ accessKeyId: "AKIAIOSFODNN7EXAMPLE" });';
+      const text = `const client = new S3Client({ accessKeyId: "${FAKE_AWS_KEY}" });`;
 
       const result = redactSecrets(text);
 
-      expect(result.redacted).not.toContain("AKIAIOSFODNN7EXAMPLE");
+      expect(result.redacted).not.toContain(FAKE_AWS_KEY);
       expect(result.redacted).toContain("[REDACTED]");
       expect(result.matches.map((m) => m.kind)).toContain("aws_access_key_id");
     });
@@ -105,15 +108,48 @@ describe("redactSecrets", () => {
     });
   });
 
+  describe("AWS documentation example credentials", () => {
+    // AWS's own docs publish these placeholder credentials; they appear in
+    // countless READMEs and tests and are never valid.
+    it.each(["AKIAIOSFODNN7EXAMPLE", "AKIAI44QH8DHBEXAMPLE"])("does not flag the example access key ID %s", (key) => {
+      const result = redactSecrets(`accessKeyId: "${key}"`);
+
+      expect(result.matches).toEqual([]);
+      expect(result.redacted).toContain(key);
+    });
+
+    it("does not flag the example secret access key assigned to a secret-like name", () => {
+      const result = redactSecrets('aws_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"');
+
+      expect(result.matches).toEqual([]);
+    });
+
+    it("still flags a real-looking key on the same line as an example one", () => {
+      const result = redactSecrets(`keys: ["AKIAIOSFODNN7EXAMPLE", "${FAKE_AWS_KEY}"]`);
+
+      expect(result.matches.map((m) => m.kind)).toEqual(["aws_access_key_id"]);
+      expect(result.redacted).not.toContain(FAKE_AWS_KEY);
+    });
+  });
+
+  it("reports the 0-based line index of each match", () => {
+    const apiKeyLine = "api_key" + ': "notarealkey_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"';
+    const text = ["const a = 1;", `accessKeyId: "${FAKE_AWS_KEY}"`, "", apiKeyLine].join("\n");
+
+    const result = redactSecrets(text);
+
+    expect(result.matches.map((m) => m.lineIndex)).toEqual([1, 3]);
+  });
+
   it("redacts every match when the same text has multiple secrets", () => {
     const text = [
-      'accessKeyId: "AKIAIOSFODNN7EXAMPLE"',
+      `accessKeyId: "${FAKE_AWS_KEY}"`,
       'api_key: "notarealkey_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"',
     ].join("\n");
 
     const result = redactSecrets(text);
 
-    expect(result.redacted).not.toContain("AKIAIOSFODNN7EXAMPLE");
+    expect(result.redacted).not.toContain(FAKE_AWS_KEY);
     expect(result.redacted).not.toContain("notarealkey_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
     expect(result.matches).toHaveLength(2);
   });

@@ -209,8 +209,12 @@ orchestration, not owning the business logic.
   (`src/graph/secrets.ts` — AWS access key IDs, private key blocks,
   long tokens next to `api_key`/`secret`/`token`/`password`) and
   replaces any match with `[REDACTED]` *before* building the prompt.
-  A match also raises a deterministic `critical`/`security` issue on
-  its own — it doesn't depend on the model noticing the placeholder.
+  A match on a line the PR *adds* also raises a deterministic
+  `critical`/`security` issue, pointing at that line — it doesn't depend
+  on the model noticing the placeholder. Matches on unchanged context
+  lines or removed lines are redacted but not reported (this PR didn't
+  introduce them), and the placeholder credentials from AWS's own docs
+  (`AKIAIOSFODNN7EXAMPLE` and friends) are ignored.
   Because the raw value is never sent, it can't be echoed back into
   an issue's explanation and end up quoted in the public PR comment.
 - **The diff is data, not instructions.** Reviewer instructions go in a

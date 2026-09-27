@@ -66,6 +66,34 @@ export function hunkLineRanges(patch: string): LineRange[] {
   return ranges;
 }
 
+/**
+ * Maps the index (within `patch.split("\n")`) of every added (`+`) line to
+ * its 1-indexed line number in the new file.
+ */
+export function addedLineNumbers(patch: string): Map<number, number> {
+  const added = new Map<number, number>();
+  let newLine = 0;
+  let inHunk = false;
+
+  patch.split("\n").forEach((line, index) => {
+    const hunk = HUNK_NEW_RANGE.exec(line);
+    if (hunk) {
+      inHunk = true;
+      newLine = Number(hunk[1]);
+      return;
+    }
+    if (!inHunk) return;
+    if (line.startsWith("+")) {
+      added.set(index, newLine);
+      newLine += 1;
+    } else if (line.startsWith(" ")) {
+      newLine += 1;
+    }
+  });
+
+  return added;
+}
+
 const FILE_HEADER = /^diff --git a\/.* b\/(.*)$/;
 const NEW_FILE_PATH = /^\+\+\+ (?:b\/(.*)|\/dev\/null)$/;
 const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
