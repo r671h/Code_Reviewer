@@ -16,7 +16,7 @@ index 0000000..1234567
 describe("buildReviewGraph (end to end, mocked deps)", () => {
   it("keeps fileErrors from every stage — fetch_context's failure isn't wiped by analyze's own", async () => {
     const graph = buildReviewGraph({
-      fetchDiff: { getPrDiff: async () => SINGLE_FILE_DIFF, githubToken: "t" },
+      fetchDiff: { getPrDiff: async () => SINGLE_FILE_DIFF, getPrHeadSha: async () => "sha", githubToken: "t" },
       fetchContext: {
         getFileContent: async () => {
           throw new GitHubNetworkError("ctx boom");

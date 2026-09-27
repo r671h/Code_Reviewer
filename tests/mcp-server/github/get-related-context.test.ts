@@ -105,6 +105,27 @@ describe("getRelatedContext", () => {
     expect(result).toMatch(/could not resolve/i);
   });
 
+  it("reads the target file and every resolved import at the given ref", async () => {
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const s = String(url);
+      if (s.includes("contents/src/target.ts")) return jsonOk(TARGET_SOURCE);
+      if (s.includes("contents/src/helper.ts")) return jsonOk(HELPER_SOURCE);
+      return jsonNotFound();
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getRelatedContext(
+      { repo: "octocat/hello-world", path: "src/target.ts", symbol: "useIt", ref: "abc123" },
+      FAKE_TOKEN,
+    );
+
+    const requestedUrls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(requestedUrls.length).toBeGreaterThan(1);
+    for (const url of requestedUrls) {
+      expect(url).toContain("ref=abc123");
+    }
+  });
+
   it("propagates a real GitHub error instead of swallowing it as unresolved", async () => {
     vi.stubGlobal(
       "fetch",

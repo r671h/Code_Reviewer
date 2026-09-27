@@ -61,9 +61,12 @@ flowchart LR
     subgraph MCP["MCP server (src/mcp-server)"]
         direction TB
         T1[get_pr_diff]
+        T0[get_pr_head_sha]
         T2[get_file_content]
         T3[get_related_context]
         T4[post_summary_comment]
+        T5[find_summary_comment]
+        T6[update_summary_comment]
     end
 
     Graph -- "tool calls" --> MCP
@@ -91,6 +94,13 @@ the graph itself doesn't know whether it's printing to the console
 (`print_review`, the default) or posting a real PR comment
 (`post_review`, via `--post` or the GitHub Action) — that choice is made
 by the caller, not the graph.
+
+Changed files are read at the PR's head commit (`fetch_diff` resolves it
+via `get_pr_head_sha`), so the diff's new-file line numbers line up with
+the file content the AST context is built from. `post_review` tags its
+comment with a hidden `<!-- codereviewer:summary -->` marker and, on a
+re-run (every push to the PR), updates that comment in place instead of
+posting another one.
 
 ## Why this graph design
 
@@ -123,7 +133,7 @@ prompt says not to."
 `(state) => Partial<State>`, or a factory `makeXNode(deps) => (state) =>
 ...` when they need injected dependencies (an MCP tool function, the LLM
 caller, `print`/`postSummaryComment`). Nothing reads from module-level
-globals. That's what makes 137 tests possible without a single real
+globals. That's what makes 171 tests possible without a single real
 network or LLM call in the suite — every dependency is a fake at the
 boundary.
 

@@ -3,13 +3,19 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   GetFileContentInputSchema,
   GetPrDiffInputSchema,
+  GetPrHeadShaInputSchema,
   GetRelatedContextInputSchema,
   PostSummaryCommentInputSchema,
+  FindSummaryCommentInputSchema,
+  UpdateSummaryCommentInputSchema,
 } from "../schemas/github.js";
 import { getFileContent } from "./github/get-file-content.js";
 import { getPrDiff } from "./github/get-pr-diff.js";
+import { getPrHeadSha } from "./github/get-pr-head-sha.js";
 import { getRelatedContext } from "./github/get-related-context.js";
 import { postSummaryComment } from "./github/post-summary-comment.js";
+import { findSummaryComment } from "./github/find-summary-comment.js";
+import { updateSummaryComment } from "./github/update-summary-comment.js";
 import type { GitHubMcpError } from "./errors.js";
 
 export function createGithubMcpServer(githubToken: string): McpServer {
@@ -23,6 +29,16 @@ export function createGithubMcpServer(githubToken: string): McpServer {
       inputSchema: GetPrDiffInputSchema.shape,
     },
     (input) => toToolResult(() => getPrDiff(input, githubToken)),
+  );
+
+  server.registerTool(
+    "get_pr_head_sha",
+    {
+      title: "Get PR head SHA",
+      description: "Returns the SHA of a pull request's head commit (the ref to read changed files at).",
+      inputSchema: GetPrHeadShaInputSchema.shape,
+    },
+    (input) => toToolResult(() => getPrHeadSha(input, githubToken)),
   );
 
   server.registerTool(
@@ -59,6 +75,36 @@ export function createGithubMcpServer(githubToken: string): McpServer {
       toToolResult(async () => {
         const posted = await postSummaryComment(input, githubToken);
         return `Posted comment: ${posted.htmlUrl}`;
+      }),
+  );
+
+  server.registerTool(
+    "find_summary_comment",
+    {
+      title: "Find summary comment",
+      description:
+        "Finds the most recent comment on a pull request whose body contains a marker string. " +
+        "Returns its id and URL, or reports that none exists.",
+      inputSchema: FindSummaryCommentInputSchema.shape,
+    },
+    (input) =>
+      toToolResult(async () => {
+        const found = await findSummaryComment(input, githubToken);
+        return found ? `Found comment ${found.id}: ${found.htmlUrl}` : "No matching comment found";
+      }),
+  );
+
+  server.registerTool(
+    "update_summary_comment",
+    {
+      title: "Update summary comment",
+      description: "Replaces the Markdown body of an existing comment on a GitHub pull request.",
+      inputSchema: UpdateSummaryCommentInputSchema.shape,
+    },
+    (input) =>
+      toToolResult(async () => {
+        const updated = await updateSummaryComment(input, githubToken);
+        return `Updated comment: ${updated.htmlUrl}`;
       }),
   );
 

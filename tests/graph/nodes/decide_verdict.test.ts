@@ -7,6 +7,7 @@ function baseState(issues: Issue[]): GraphStateType {
   return {
     repo: "octocat/hello-world",
     prNumber: 42,
+    headSha: undefined,
     files: [],
     fileContexts: [],
     issues,

@@ -1,5 +1,5 @@
 import posixPath from "node:path/posix";
-import type { GetRelatedContextInput } from "../../schemas/github.js";
+import type { GetFileContentInput, GetRelatedContextInput } from "../../schemas/github.js";
 import { GitHubNotFoundError } from "../errors.js";
 import { getFileContent } from "./get-file-content.js";
 import { analyzeSymbol, extractSignature, type FunctionSignature, type ImportUsage } from "./related-context-ast.js";
@@ -23,7 +23,7 @@ export async function getRelatedContext(
   token: string,
   tokenBudget = DEFAULT_TOKEN_BUDGET,
 ): Promise<string> {
-  const sourceText = await getFileContent({ repo: input.repo, path: input.path }, token);
+  const sourceText = await getFileContent(fileAt(input, input.path), token);
   const analysis = analyzeSymbol(sourceText, input.symbol, input.path);
 
   const items: RenderedItem[] = analysis.calledSiblings.map((sig) => ({
@@ -56,7 +56,7 @@ async function resolveImport(
   }
 
   const base = resolveModuleBase(input.path, imp.modulePath);
-  const found = await fetchFirstExisting(input.repo, candidatePaths(base), token);
+  const found = await fetchFirstExisting(input, candidatePaths(base), token);
   if (!found) {
     return { tier: 3, text: `- \`${imp.name}\` — local import \`"${imp.modulePath}"\` (could not resolve file)` };
   }
@@ -82,14 +82,19 @@ function candidatePaths(base: string): string[] {
   return [`${base}.ts`, `${base}.tsx`, posixPath.join(base, "index.ts"), posixPath.join(base, "index.tsx")];
 }
 
+/** Input for reading `path` from the same repo, at the same ref, as `input`. */
+function fileAt(input: GetRelatedContextInput, path: string): GetFileContentInput {
+  return { repo: input.repo, path, ...(input.ref !== undefined ? { ref: input.ref } : {}) };
+}
+
 async function fetchFirstExisting(
-  repo: string,
+  input: GetRelatedContextInput,
   candidates: string[],
   token: string,
 ): Promise<{ path: string; content: string } | undefined> {
   for (const candidate of candidates) {
     try {
-      const content = await getFileContent({ repo, path: candidate }, token);
+      const content = await getFileContent(fileAt(input, candidate), token);
       return { path: candidate, content };
     } catch (error) {
       if (error instanceof GitHubNotFoundError) continue;

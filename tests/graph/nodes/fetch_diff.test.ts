@@ -32,6 +32,7 @@ function baseState(): GraphStateType {
   return {
     repo: "octocat/hello-world",
     prNumber: 42,
+    headSha: undefined,
     files: [],
     fileContexts: [],
     issues: [],
@@ -41,10 +42,28 @@ function baseState(): GraphStateType {
   };
 }
 
+const HEAD_SHA = "0123456789abcdef0123456789abcdef01234567";
+
+function fakeHeadSha() {
+  return vi.fn().mockResolvedValue(HEAD_SHA);
+}
+
 describe("fetch_diff node", () => {
+  it("fetches the PR's head commit SHA and puts it in state, so file reads match the diff", async () => {
+    const getPrDiff = vi.fn().mockResolvedValue(SAMPLE_DIFF);
+    const getPrHeadSha = fakeHeadSha();
+    const node = makeFetchDiffNode({ getPrDiff, getPrHeadSha, githubToken: "fake-token" });
+
+    const result = await node(baseState());
+
+    expect(getPrHeadSha).toHaveBeenCalledWith({ repo: "octocat/hello-world", pr_number: 42 }, "fake-token");
+    expect(result.headSha).toBe(HEAD_SHA);
+  });
+
+
   it("calls get_pr_diff with the state's repo and PR number", async () => {
     const getPrDiff = vi.fn().mockResolvedValue(SAMPLE_DIFF);
-    const node = makeFetchDiffNode({ getPrDiff, githubToken: "fake-token" });
+    const node = makeFetchDiffNode({ getPrDiff, getPrHeadSha: fakeHeadSha(), githubToken: "fake-token" });
 
     await node(baseState());
 
@@ -53,7 +72,7 @@ describe("fetch_diff node", () => {
 
   it("returns parsed files from the diff", async () => {
     const getPrDiff = vi.fn().mockResolvedValue(SAMPLE_DIFF);
-    const node = makeFetchDiffNode({ getPrDiff, githubToken: "fake-token" });
+    const node = makeFetchDiffNode({ getPrDiff, getPrHeadSha: fakeHeadSha(), githubToken: "fake-token" });
 
     const result = await node(baseState());
 
@@ -64,7 +83,7 @@ describe("fetch_diff node", () => {
 
   it("returns an empty files array for an empty diff (no changes), without crashing", async () => {
     const getPrDiff = vi.fn().mockResolvedValue("");
-    const node = makeFetchDiffNode({ getPrDiff, githubToken: "fake-token" });
+    const node = makeFetchDiffNode({ getPrDiff, getPrHeadSha: fakeHeadSha(), githubToken: "fake-token" });
 
     const result = await node(baseState());
 
@@ -77,7 +96,7 @@ describe("fetch_diff node", () => {
 
   it("keeps every file and reports no skips when file count is at or under maxFiles", async () => {
     const getPrDiff = vi.fn().mockResolvedValue(multiFileDiff(3));
-    const node = makeFetchDiffNode({ getPrDiff, githubToken: "fake-token", maxFiles: 3 });
+    const node = makeFetchDiffNode({ getPrDiff, getPrHeadSha: fakeHeadSha(), githubToken: "fake-token", maxFiles: 3 });
 
     const result = await node(baseState());
 
@@ -87,7 +106,7 @@ describe("fetch_diff node", () => {
 
   it("keeps the first maxFiles files and marks the rest as skipped with a reason in fileErrors", async () => {
     const getPrDiff = vi.fn().mockResolvedValue(multiFileDiff(5));
-    const node = makeFetchDiffNode({ getPrDiff, githubToken: "fake-token", maxFiles: 3 });
+    const node = makeFetchDiffNode({ getPrDiff, getPrHeadSha: fakeHeadSha(), githubToken: "fake-token", maxFiles: 3 });
 
     const result = await node(baseState());
 

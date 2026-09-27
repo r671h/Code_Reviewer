@@ -66,6 +66,7 @@ function baseState(overrides: Partial<GraphStateType> = {}): GraphStateType {
   return {
     repo: "octocat/hello-world",
     prNumber: 42,
+    headSha: undefined,
     files: [],
     fileContexts: [],
     issues: [],

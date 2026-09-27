@@ -18,7 +18,7 @@ export function makeFetchContextNode(deps: FetchContextDeps) {
     const fileErrors: FileError[] = [];
 
     for (const file of state.files) {
-      const { context, errors } = await buildFileContext(state.repo, file, deps);
+      const { context, errors } = await buildFileContext({ repo: state.repo, headSha: state.headSha }, file, deps);
       fileContexts.push(context);
       fileErrors.push(...errors);
     }
@@ -27,8 +27,14 @@ export function makeFetchContextNode(deps: FetchContextDeps) {
   };
 }
 
+interface PrRef {
+  repo: string;
+  /** Read files at this commit so they match the diff; undefined falls back to the default branch. */
+  headSha: string | undefined;
+}
+
 async function buildFileContext(
-  repo: string,
+  pr: PrRef,
   file: ChangedFile,
   deps: FetchContextDeps,
 ): Promise<{ context: FileContext; errors: FileError[] }> {
@@ -38,7 +44,7 @@ async function buildFileContext(
 
   let sourceText: string;
   try {
-    sourceText = await deps.getFileContent({ repo, path: file.path }, deps.githubToken);
+    sourceText = await deps.getFileContent({ repo: pr.repo, path: file.path, ...refOf(pr) }, deps.githubToken);
   } catch (error) {
     return {
       context: { path: file.path, patch: file.patch, relatedContext: "" },
@@ -52,7 +58,10 @@ async function buildFileContext(
 
   for (const symbol of symbols) {
     try {
-      const text = await deps.getRelatedContext({ repo, path: file.path, symbol }, deps.githubToken);
+      const text = await deps.getRelatedContext(
+        { repo: pr.repo, path: file.path, symbol, ...refOf(pr) },
+        deps.githubToken,
+      );
       contextTexts.push(text);
     } catch (error) {
       errors.push({ path: file.path, stage: "fetch_context", message: messageOf(error) });
@@ -63,6 +72,10 @@ async function buildFileContext(
     context: { path: file.path, patch: file.patch, relatedContext: contextTexts.join("\n\n") },
     errors,
   };
+}
+
+function refOf(pr: PrRef): { ref?: string } {
+  return pr.headSha !== undefined ? { ref: pr.headSha } : {};
 }
 
 function messageOf(error: unknown): string {

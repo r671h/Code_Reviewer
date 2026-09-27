@@ -30,6 +30,8 @@ function append<T>(): { reducer: (prev: T[], next: T[]) => T[] } {
 export const GraphState = Annotation.Root({
   repo: Annotation<string>,
   prNumber: Annotation<number>,
+  /** The PR's head commit — file contents are read at this ref so they match the diff. */
+  headSha: Annotation<string | undefined>({ ...overwrite<string | undefined>(), default: () => undefined }),
   files: Annotation<ChangedFile[]>({ ...overwrite<ChangedFile[]>(), default: () => [] }),
   fileContexts: Annotation<FileContext[]>({ ...overwrite<FileContext[]>(), default: () => [] }),
   issues: Annotation<Issue[]>({ ...overwrite<Issue[]>(), default: () => [] }),

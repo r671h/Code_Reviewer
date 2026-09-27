@@ -62,6 +62,14 @@ describe("postSummaryComment", () => {
     expect(result).toEqual({ id: 123, htmlUrl: "https://github.com/octocat/hello-world/pull/42#issuecomment-123" });
   });
 
+  it("throws GitHubNetworkError when the response isn't a comment", async () => {
+    mockFetchOnce({ ok: true, status: 201, json: async () => ({ unexpected: true }) });
+
+    await expect(
+      postSummaryComment({ repo: "octocat/hello-world", pr_number: 42, body: "x" }, FAKE_TOKEN),
+    ).rejects.toThrow(GitHubNetworkError);
+  });
+
   it("throws GitHubNotFoundError when the PR does not exist", async () => {
     mockFetchOnce({ ok: false, status: 404 });
 

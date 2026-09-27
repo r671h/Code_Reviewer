@@ -4,12 +4,16 @@
 //
 // Without --post, the review is printed to the console (safe default for
 // local runs). With --post, it's posted as a real comment on the PR — this
-// is what the GitHub Action (action.yml) uses.
+// is what the GitHub Action (action.yml) uses. A re-run updates the earlier
+// review comment in place rather than posting another one.
 import { config } from "dotenv";
 import { getFileContent } from "./mcp-server/github/get-file-content.js";
 import { getPrDiff } from "./mcp-server/github/get-pr-diff.js";
+import { getPrHeadSha } from "./mcp-server/github/get-pr-head-sha.js";
 import { getRelatedContext } from "./mcp-server/github/get-related-context.js";
+import { findSummaryComment } from "./mcp-server/github/find-summary-comment.js";
 import { postSummaryComment } from "./mcp-server/github/post-summary-comment.js";
+import { updateSummaryComment } from "./mcp-server/github/update-summary-comment.js";
 import { buildReviewGraph } from "./graph/graph.js";
 import { createAnalyzeFile } from "./graph/llm.js";
 import { makePrintReviewNode } from "./graph/nodes/print_review.js";
@@ -36,18 +40,18 @@ const maxFiles = parsePositiveIntEnv("MAX_FILES", DEFAULT_MAX_FILES);
 const reviewTimeoutMs = parsePositiveIntEnv("REVIEW_TIMEOUT_MS", DEFAULT_REVIEW_TIMEOUT_MS);
 
 const graph = buildReviewGraph({
-  fetchDiff: { getPrDiff, githubToken, maxFiles },
+  fetchDiff: { getPrDiff, getPrHeadSha, githubToken, maxFiles },
   fetchContext: { getFileContent, getRelatedContext, githubToken },
   analyze: { analyzeFile: createAnalyzeFile(geminiApiKey) },
   deliverReview: post
-    ? makePostReviewNode({ postSummaryComment, githubToken })
+    ? makePostReviewNode({ postSummaryComment, findSummaryComment, updateSummaryComment, githubToken })
     : makePrintReviewNode({ print: (text) => console.log(text) }),
 });
 
 try {
   await runWithTimeout(graph.invoke({ repo, prNumber: Number(prNumberArg) }), reviewTimeoutMs);
   if (post) {
-    console.log(`Posted review comment on ${repo}#${prNumberArg}`);
+    console.log(`Posted or updated review comment on ${repo}#${prNumberArg}`);
   }
 } catch (error) {
   if (error instanceof ReviewTimeoutError) {
