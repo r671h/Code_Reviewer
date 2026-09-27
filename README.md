@@ -137,7 +137,7 @@ it's incomplete — an unreviewed file is never reported as a clean one.
 `(state) => Partial<State>`, or a factory `makeXNode(deps) => (state) =>
 ...` when they need injected dependencies (an MCP tool function, the LLM
 caller, `print`/`postSummaryComment`). Nothing reads from module-level
-globals. That's what makes 199 tests possible without a single real
+globals. That's what makes 222 tests possible without a single real
 network or LLM call in the suite — every dependency is a fake at the
 boundary.
 
