@@ -18,7 +18,49 @@ function baseState(overrides: Partial<GraphStateType> = {}): GraphStateType {
   };
 }
 
+/** A realistic patch: parseUnifiedDiff always starts a file's patch at its first hunk header. */
+const TEN_LINE_HUNK = "@@ -1,1 +1,10 @@\n+x";
+
 describe("analyze node", () => {
+  describe("dropping issues outside the diff", () => {
+    const PATCH = ["@@ -1,2 +1,3 @@", " a", "+b", " c", "@@ -40,1 +41,2 @@", " d", "+e"].join("\n");
+    const llmIssue = (line: number) => ({
+      file: "src/a.ts",
+      line,
+      severity: "warning" as const,
+      category: "bug" as const,
+      explanation: `line ${line}`,
+    });
+
+    it("keeps model issues whose line falls inside a hunk of the diff", async () => {
+      const analyzeFile = vi.fn().mockResolvedValue({ issues: [llmIssue(2), llmIssue(42)] });
+      const node = makeAnalyzeNode({ analyzeFile });
+
+      const result = await node(baseState({ fileContexts: [{ path: "src/a.ts", patch: PATCH, relatedContext: "" }] }));
+
+      expect(result.issues?.map((i) => i.line)).toEqual([2, 42]);
+    });
+
+    it("drops model issues pointing at lines the diff doesn't touch (hallucinated or out of scope)", async () => {
+      const analyzeFile = vi.fn().mockResolvedValue({ issues: [llmIssue(2), llmIssue(20), llmIssue(500)] });
+      const node = makeAnalyzeNode({ analyzeFile });
+
+      const result = await node(baseState({ fileContexts: [{ path: "src/a.ts", patch: PATCH, relatedContext: "" }] }));
+
+      expect(result.issues?.map((i) => i.line)).toEqual([2]);
+    });
+
+    it("checks against the full patch, so an issue past the 500-line truncation point isn't dropped", async () => {
+      const bigHunk = ["@@ -1,0 +1,600 @@", ...Array.from({ length: 600 }, (_, i) => `+line ${i}`)].join("\n");
+      const analyzeFile = vi.fn().mockResolvedValue({ issues: [llmIssue(550)] });
+      const node = makeAnalyzeNode({ analyzeFile });
+
+      const result = await node(baseState({ fileContexts: [{ path: "src/a.ts", patch: bigHunk, relatedContext: "" }] }));
+
+      expect(result.issues?.map((i) => i.line)).toEqual([550]);
+    });
+  });
+
   it("calls analyzeFile for each file context and collects the issues", async () => {
     const analyzeFile = vi.fn().mockResolvedValue({
       issues: [{ file: "wrong.ts", line: 3, severity: "warning", category: "style", explanation: "nit" }],
@@ -26,12 +68,12 @@ describe("analyze node", () => {
     const node = makeAnalyzeNode({ analyzeFile });
 
     const state = baseState({
-      fileContexts: [{ path: "src/a.ts", patch: "+x", relatedContext: "" }],
+      fileContexts: [{ path: "src/a.ts", patch: TEN_LINE_HUNK, relatedContext: "" }],
     });
 
     const result = await node(state);
 
-    expect(analyzeFile).toHaveBeenCalledWith({ path: "src/a.ts", patch: "+x", relatedContext: "" });
+    expect(analyzeFile).toHaveBeenCalledWith({ path: "src/a.ts", patch: TEN_LINE_HUNK, relatedContext: "" });
     expect(result.issues).toHaveLength(1);
   });
 
@@ -42,7 +84,7 @@ describe("analyze node", () => {
     const node = makeAnalyzeNode({ analyzeFile });
 
     const state = baseState({
-      fileContexts: [{ path: "src/a.ts", patch: "+x", relatedContext: "" }],
+      fileContexts: [{ path: "src/a.ts", patch: TEN_LINE_HUNK, relatedContext: "" }],
     });
 
     const result = await node(state);
@@ -73,7 +115,7 @@ describe("analyze node", () => {
     const state = baseState({
       fileContexts: [
         { path: "src/bad.ts", patch: "+x", relatedContext: "" },
-        { path: "src/good.ts", patch: "+y", relatedContext: "" },
+        { path: "src/good.ts", patch: TEN_LINE_HUNK, relatedContext: "" },
       ],
     });
 
@@ -134,7 +176,7 @@ describe("analyze node", () => {
   });
 
   describe("secret detection", () => {
-    const AWS_KEY_PATCH = '+  accessKeyId: "AKIAIOSFODNN7EXAMPLE",';
+    const AWS_KEY_PATCH = '@@ -1,1 +1,10 @@\n+  accessKeyId: "AKIAIOSFODNN7EXAMPLE",';
 
     it("redacts a detected secret in the patch before it ever reaches the LLM", async () => {
       const analyzeFile = vi.fn().mockResolvedValue({ issues: [] });

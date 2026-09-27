@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseUnifiedDiff, truncatePatch, truncateRelatedContext } from "../../src/graph/diff.js";
+import { hunkLineRanges, parseUnifiedDiff, truncatePatch, truncateRelatedContext } from "../../src/graph/diff.js";
 
 const SAMPLE_DIFF = `diff --git a/src/foo.ts b/src/foo.ts
 index e69de29..b6fc4c6 100644
@@ -75,6 +75,33 @@ rename to src/new-name.ts
     const files = parseUnifiedDiff(renameOnlyDiff);
 
     expect(files).toEqual([{ path: "src/new-name.ts", patch: "", changedLines: [] }]);
+  });
+});
+
+describe("hunkLineRanges", () => {
+  it("returns each hunk's new-file line range from its header", () => {
+    const patch = ["@@ -1,3 +1,4 @@", " a", "+b", "@@ -20,2 +21,5 @@", " c"].join("\n");
+
+    expect(hunkLineRanges(patch)).toEqual([
+      { start: 1, end: 4 },
+      { start: 21, end: 25 },
+    ]);
+  });
+
+  it("treats an omitted count as a one-line hunk", () => {
+    expect(hunkLineRanges("@@ -7 +7 @@\n+x")).toEqual([{ start: 7, end: 7 }]);
+  });
+
+  it("skips a pure-deletion hunk (count 0), which has no lines in the new file", () => {
+    expect(hunkLineRanges("@@ -5,2 +4,0 @@\n-a\n-b")).toEqual([]);
+  });
+
+  it("returns no ranges for an empty patch (e.g. a pure rename)", () => {
+    expect(hunkLineRanges("")).toEqual([]);
+  });
+
+  it("ignores hunk-header-looking text inside a line's content", () => {
+    expect(hunkLineRanges("@@ -1,1 +1,1 @@\n+const s = '@@ -9,9 +90,9 @@';")).toEqual([{ start: 1, end: 1 }]);
   });
 });
 

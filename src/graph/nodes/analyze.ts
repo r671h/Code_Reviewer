@@ -1,5 +1,5 @@
 import type { AnalyzeFile } from "../llm.js";
-import { truncatePatch, truncateRelatedContext } from "../diff.js";
+import { hunkLineRanges, truncatePatch, truncateRelatedContext, type LineRange } from "../diff.js";
 import { redactSecrets, type SecretMatch } from "../secrets.js";
 import type { Issue } from "../../schemas/review.js";
 import type { FileError, GraphStateType } from "../state.js";
@@ -12,6 +12,10 @@ export interface AnalyzeDeps {
  * Runs the LLM analysis per file. A single file's analysis exhausting
  * retries doesn't abort the review — it's recorded as a fileError and the
  * review proceeds with whatever files succeeded.
+ *
+ * Model issues whose line falls outside every hunk of the file's diff are
+ * dropped: the review covers what the PR changed, and a line the diff
+ * doesn't touch is either hallucinated or out of scope.
  */
 export function makeAnalyzeNode(deps: AnalyzeDeps) {
   return async function analyze(state: GraphStateType): Promise<Partial<GraphStateType>> {
@@ -33,8 +37,11 @@ export function makeAnalyzeNode(deps: AnalyzeDeps) {
           patch: patchScan.redacted,
           relatedContext: contextScan.redacted,
         });
+        const ranges = hunkLineRanges(fileContext.patch);
         for (const issue of result.issues) {
-          issues.push({ ...issue, file: fileContext.path });
+          if (isWithin(issue.line, ranges)) {
+            issues.push({ ...issue, file: fileContext.path });
+          }
         }
       } catch (error) {
         fileErrors.push({
@@ -47,6 +54,10 @@ export function makeAnalyzeNode(deps: AnalyzeDeps) {
 
     return { issues, fileErrors };
   };
+}
+
+function isWithin(line: number, ranges: LineRange[]): boolean {
+  return ranges.some((range) => line >= range.start && line <= range.end);
 }
 
 const SECRET_KIND_LABELS: Record<SecretMatch["kind"], string> = {
