@@ -1,4 +1,4 @@
-import type { PostSummaryCommentInput } from "../../schemas/github.js";
+import { IssueCommentSchema, type PostSummaryCommentInput } from "../../schemas/github.js";
 import { GitHubAuthError, GitHubNetworkError, GitHubNotFoundError, GitHubRateLimitError } from "../errors.js";
 import { isGitHubRateLimited } from "./classify-403.js";
 
@@ -62,6 +62,9 @@ export async function postSummaryComment(input: PostSummaryCommentInput, token: 
     );
   }
 
-  const data = (await response.json()) as { id: number; html_url: string };
-  return { id: data.id, htmlUrl: data.html_url };
+  const parsed = IssueCommentSchema.safeParse(await response.json());
+  if (!parsed.success) {
+    throw new GitHubNetworkError(`Unexpected GitHub response posting comment on ${input.repo}#${input.pr_number}`);
+  }
+  return { id: parsed.data.id, htmlUrl: parsed.data.html_url };
 }

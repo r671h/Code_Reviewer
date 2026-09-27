@@ -17,13 +17,15 @@ comment on the PR.
 ## Architecture (LangGraph)
 
 ### Nodes
-1. **fetch_diff** — calls `get_pr_diff`, parses the unified diff into
-   per-file `ChangedFile[]` (path, patch, 1-indexed changed lines in the
-   new file)
+1. **fetch_diff** — calls `get_pr_head_sha` (stored as `headSha`) and
+   `get_pr_diff`, parses the unified diff into per-file `ChangedFile[]`
+   (path, patch, 1-indexed changed lines in the new file)
 2. **fetch_context** — iterates `files`; for each `.ts`/`.tsx` file, calls
-   `get_file_content`, maps the changed lines to enclosing top-level
+   `get_file_content` at `ref = headSha` (so the file matches the diff's
+   new-file line numbers, and files added by the PR exist), maps the
+   changed lines to enclosing top-level
    functions (`findChangedSymbols`, AST-based), and calls
-   `get_related_context` per changed symbol. Non-TS files and files with
+   `get_related_context` per changed symbol (same ref). Non-TS files and files with
    no changed-line-containing function get an empty `relatedContext`. A
    single file's fetch failure doesn't abort the run — recorded as a
    `fileError` (stage `fetch_context`), the file still gets a context
@@ -44,8 +46,13 @@ comment on the PR.
    severity; `fileErrors` always listed under "Notes", never hidden).
 7. **deliver_review** — terminal node, swappable: `print_review` (logs
    `reviewText` via an injected `print` function — the local/dry-run
-   default) or `post_review` (posts it as a real PR comment via
-   `post_summary_comment` — what `--post` and the GitHub Action use). The
+   default) or `post_review` (posts it as a real PR comment — what
+   `--post` and the GitHub Action use). `post_review` appends a hidden
+   `<!-- codereviewer:summary -->` marker; if `find_summary_comment`
+   finds an earlier marked comment it is updated in place via
+   `update_summary_comment`, otherwise (or if that comment can't be
+   edited: auth / not_found) a new one is posted via
+   `post_summary_comment`. The
    graph itself takes a `deliverReview` node function and doesn't know
    which implementation it got; `src/agent.ts` picks based on `--post`.
 
@@ -72,6 +79,7 @@ upgrade, not a correctness gap today.
 {
   repo: string
   prNumber: number
+  headSha: string | undefined     // PR head commit; ref for all file reads
   files: ChangedFile[]            // { path, patch, changedLines }
   fileContexts: FileContext[]     // { path, patch, relatedContext }
   issues: Issue[]                 // { file, line, severity, category, explanation }
@@ -96,8 +104,11 @@ in `tests/schemas/review.test.ts`).
 
 ## MCP Server — tools
 - `get_pr_diff(repo, pr_number)` → unified diff string. **Implemented.**
+- `get_pr_head_sha(repo, pr_number)` → SHA of the PR's head commit.
+  **Implemented.**
 - `get_file_content(repo, path, ref)` → file contents. **Implemented.**
-- `get_related_context(repo, path, symbol)` → one-hop AST-derived context:
+- `get_related_context(repo, path, symbol, ref?)` → one-hop AST-derived context
+  (target file and resolved imports all read at `ref`):
   signatures of same-file sibling functions called by `symbol`, plus
   signatures of repo-local imports it uses (external packages noted by
   name only). Capped at ~2000 tokens. See design below. **Implemented.**
@@ -106,6 +117,10 @@ in `tests/schemas/review.test.ts`).
   purposes). **Implemented.** Deliberately not the "create a review"
   endpoint with per-line positioned comments — see
   `post_review_comment` below.
+- `find_summary_comment(repo, pr_number, marker)` → most recent PR comment
+  containing `marker` (paginated), or none. **Implemented.**
+- `update_summary_comment(repo, comment_id, body)` → replaces a comment's
+  body. **Implemented.**
 - `post_review_comment(repo, pr_number, file, line, body)` — **not
   implemented.** Needs mapping an issue's line number to the diff's
   `position` field for GitHub's review-comments API, which is unresolved
@@ -164,7 +179,7 @@ project.
 /src
   /mcp-server
     errors.ts             -> typed error classes (network/auth/not_found)
-    server.ts              -> McpServer, registers all four tools
+    server.ts              -> McpServer, registers all seven tools
     index.ts                -> stdio entry point (real MCP server process)
     /github
       get-pr-diff.ts
@@ -256,7 +271,9 @@ README.md                    -> functional usage doc (not the portfolio writeup)
     which had to be deleted by hand. Fixed: `agent.ts` now logs
     `Posted review comment on <repo>#<pr>` after a successful `--post`
     run, so a re-run is no longer silently indistinguishable from a
-    first run.
+    first run. Later fixed at the root: re-runs now update the earlier
+    marked review comment in place instead of posting a duplicate (see
+    `post_review` above).
 12. ~~`post_summary_comment` MCP tool + `post_review` node~~ **Done**,
     unit-tested (mocked `fetch`/mocked tool call, no real posts in the
     suite).

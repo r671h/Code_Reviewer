@@ -41,3 +41,29 @@ export const PostSummaryCommentInputSchema = z.object({
 });
 
 export type PostSummaryCommentInput = z.infer<typeof PostSummaryCommentInputSchema>;
+
+export const FindSummaryCommentInputSchema = z.object({
+  repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'repo must be in "owner/repo" format'),
+  pr_number: z.number().int().positive(),
+  /** Substring (typically a hidden HTML comment) that identifies the comment to find. */
+  marker: z.string().min(1),
+});
+
+export type FindSummaryCommentInput = z.infer<typeof FindSummaryCommentInputSchema>;
+
+export const UpdateSummaryCommentInputSchema = z.object({
+  repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'repo must be in "owner/repo" format'),
+  comment_id: z.number().int().positive(),
+  body: z.string().min(1),
+});
+
+export type UpdateSummaryCommentInput = z.infer<typeof UpdateSummaryCommentInputSchema>;
+
+/** The slice of GitHub's issue-comment JSON the comment tools read. */
+export const IssueCommentSchema = z.object({
+  id: z.number().int(),
+  html_url: z.string(),
+  body: z.string().nullish(),
+});
+
+export const IssueCommentListSchema = z.array(IssueCommentSchema);
