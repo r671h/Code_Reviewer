@@ -64,6 +64,28 @@ describe("withRetry", () => {
     expect(onRetry).toHaveBeenNthCalledWith(2, 2, expect.any(Error));
   });
 
+  it("stops immediately, without sleeping, when isRetryable says the error is permanent", async () => {
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const permanent = new Error("402 Payment Required");
+    const operation = vi.fn().mockRejectedValue(permanent);
+
+    const caught = await withRetry(operation, { maxAttempts: 3, sleep, isRetryable: () => false }).catch((e) => e);
+
+    expect(operation).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(caught).toBeInstanceOf(RetryExhaustedError);
+    expect((caught as RetryExhaustedError).attempts).toBe(1);
+    expect((caught as RetryExhaustedError).cause).toBe(permanent);
+  });
+
+  it("keeps retrying errors isRetryable accepts", async () => {
+    const operation = vi.fn().mockRejectedValue(new Error("503"));
+
+    await withRetry(operation, { maxAttempts: 3, sleep: async () => {}, isRetryable: () => true }).catch(() => {});
+
+    expect(operation).toHaveBeenCalledTimes(3);
+  });
+
   it("uses retryDelayMs's suggested delay instead of the exponential backoff when it returns one", async () => {
     const sleep = vi.fn().mockResolvedValue(undefined);
     const operation = vi.fn().mockRejectedValue(new Error("rate limited"));

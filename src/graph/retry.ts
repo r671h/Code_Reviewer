@@ -23,12 +23,19 @@ export interface RetryOptions {
    * to keep the default backoff delay.
    */
   retryDelayMs?: (error: unknown, defaultDelayMs: number) => number | undefined;
+  /**
+   * Return false for a permanent error (bad request, auth, billing) to stop
+   * immediately instead of burning the remaining attempts on it. Defaults
+   * to retrying everything.
+   */
+  isRetryable?: (error: unknown) => boolean;
 }
 
 /**
  * Retries `fn` with exponential backoff. Throws {@link RetryExhaustedError}
  * (wrapping the last underlying error as `cause`) once `maxAttempts` is
- * reached — never silently swallows the failure.
+ * reached, or as soon as `isRetryable` rejects an error — never silently
+ * swallows the failure.
  */
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const maxAttempts = options.maxAttempts ?? 3;
@@ -36,21 +43,19 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
   const backoffFactor = options.backoffFactor ?? 2;
   const sleep = options.sleep ?? defaultSleep;
 
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+  for (let attempt = 1; ; attempt += 1) {
     try {
       return await fn();
     } catch (error) {
-      lastError = error;
       options.onRetry?.(attempt, error);
-      if (attempt === maxAttempts) break;
+      if (attempt >= maxAttempts || options.isRetryable?.(error) === false) {
+        throw new RetryExhaustedError(attempt, error);
+      }
       const backoffDelayMs = initialDelayMs * backoffFactor ** (attempt - 1);
       const delayMs = options.retryDelayMs?.(error, backoffDelayMs) ?? backoffDelayMs;
       await sleep(delayMs);
     }
   }
-
-  throw new RetryExhaustedError(maxAttempts, lastError);
 }
 
 function defaultSleep(ms: number): Promise<void> {
