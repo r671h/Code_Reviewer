@@ -89,7 +89,8 @@ flowchart TD
 
 `fetch_context` and `analyze` each iterate the PR's changed files
 internally — one `get_related_context` call and one LLM call per file,
-not one call for the whole PR. `deliver_review` is an *injected* node:
+not one call for the whole PR — up to `CONCURRENCY` (default 4) files
+at a time, with results kept in file order. `deliver_review` is an *injected* node:
 the graph itself doesn't know whether it's printing to the console
 (`print_review`, the default) or posting a real PR comment
 (`post_review`, via `--post` or the GitHub Action) — that choice is made
@@ -252,6 +253,8 @@ cp .env.example .env   # fill in GITHUB_TOKEN and GEMINI_API_KEY
 - `REVIEW_TIMEOUT_MS` (optional, default `300000` / 5 min) — the whole
   graph run is capped at this; on timeout the process exits with a clear
   error instead of hanging.
+- `CONCURRENCY` (optional, default `4`) — how many files are analyzed
+  (and have their context fetched) at once. Results keep file order.
 
 ```bash
 npx tsx src/agent.ts <owner/repo> <pr_number>          # prints the review
@@ -279,6 +282,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           # max_files: "30"   # optional, this is the default
+          # concurrency: "4"  # optional, this is the default
 ```
 
 The built-in `secrets.GITHUB_TOKEN` is enough — no custom PAT needed —

@@ -77,8 +77,12 @@ than one file's patch — the actual fix for the >500-line-diff edge case),
 and a single file's failure still doesn't abort the run. What `Send`
 would add on top is graph-level parallelism/isolation between files,
 which wasn't worth gating this delivery on without dedicated verification
-of `Send`'s typed integration in this LangGraph version. Valid future
-upgrade, not a correctness gap today.
+of `Send`'s typed integration in this LangGraph version. Parallelism
+itself no longer needs `Send`: both nodes now process files through
+`mapWithConcurrency` (`src/graph/concurrency.ts`), up to `CONCURRENCY`
+(default 4) at a time, results kept in file order — added after a live
+30-file review took 3m15s sequentially, close to the 5-minute
+`REVIEW_TIMEOUT_MS` default.
 
 ### State shape (`src/graph/state.ts`, via `Annotation.Root`)
 ```

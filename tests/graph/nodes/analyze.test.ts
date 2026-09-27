@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { makeAnalyzeNode } from "../../../src/graph/nodes/analyze.js";
+import { DEFAULT_ANALYZE_CONCURRENCY, makeAnalyzeNode } from "../../../src/graph/nodes/analyze.js";
 import type { GraphStateType } from "../../../src/graph/state.js";
 import { RetryExhaustedError } from "../../../src/graph/retry.js";
 
@@ -22,6 +22,52 @@ function baseState(overrides: Partial<GraphStateType> = {}): GraphStateType {
 const TEN_LINE_HUNK = "@@ -1,1 +1,10 @@\n+x";
 
 describe("analyze node", () => {
+  describe("concurrency", () => {
+    function contexts(count: number) {
+      return Array.from({ length: count }, (_, i) => ({ path: `src/f${i}.ts`, patch: TEN_LINE_HUNK, relatedContext: "" }));
+    }
+
+    it("analyzes up to `concurrency` files at once instead of one by one", async () => {
+      let inFlight = 0;
+      let maxInFlight = 0;
+      const analyzeFile = vi.fn(async () => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight -= 1;
+        return { issues: [] };
+      });
+      const node = makeAnalyzeNode({ analyzeFile, concurrency: 3 });
+
+      await node(baseState({ fileContexts: contexts(7) }));
+
+      expect(analyzeFile).toHaveBeenCalledTimes(7);
+      expect(maxInFlight).toBe(3);
+    });
+
+    it("keeps issues and fileErrors in file order, whatever order the calls finish in", async () => {
+      const analyzeFile = vi.fn(async ({ path }: { path: string }) => {
+        const index = Number(/f(\d+)/.exec(path)?.[1]);
+        await new Promise((r) => setTimeout(r, (5 - index) * 3));
+        if (index === 1 || index === 3) throw new Error(`fail ${index}`);
+        return {
+          issues: [{ file: path, line: 1, severity: "info" as const, category: "style" as const, explanation: path }],
+        };
+      });
+      const node = makeAnalyzeNode({ analyzeFile, concurrency: 5 });
+
+      const result = await node(baseState({ fileContexts: contexts(5) }));
+
+      expect(result.issues?.map((i) => i.file)).toEqual(["src/f0.ts", "src/f2.ts", "src/f4.ts"]);
+      expect(result.fileErrors?.map((e) => e.path)).toEqual(["src/f1.ts", "src/f3.ts"]);
+    });
+
+    it("defaults to a small bounded concurrency", () => {
+      expect(DEFAULT_ANALYZE_CONCURRENCY).toBeGreaterThan(1);
+      expect(DEFAULT_ANALYZE_CONCURRENCY).toBeLessThanOrEqual(8);
+    });
+  });
+
   describe("dropping issues outside the diff", () => {
     const PATCH = ["@@ -1,2 +1,3 @@", " a", "+b", " c", "@@ -40,1 +41,2 @@", " d", "+e"].join("\n");
     const llmIssue = (line: number) => ({

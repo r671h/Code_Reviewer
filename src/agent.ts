@@ -19,6 +19,7 @@ import { createAnalyzeFile } from "./graph/llm.js";
 import { makePrintReviewNode } from "./graph/nodes/print_review.js";
 import { makePostReviewNode } from "./graph/nodes/post_review.js";
 import { DEFAULT_MAX_FILES } from "./graph/nodes/fetch_diff.js";
+import { DEFAULT_ANALYZE_CONCURRENCY } from "./graph/nodes/analyze.js";
 import { ReviewTimeoutError, runWithTimeout } from "./graph/timeout.js";
 
 const DEFAULT_REVIEW_TIMEOUT_MS = 300_000;
@@ -38,11 +39,12 @@ const githubToken = requireEnv("GITHUB_TOKEN");
 const geminiApiKey = requireEnv("GEMINI_API_KEY");
 const maxFiles = parsePositiveIntEnv("MAX_FILES", DEFAULT_MAX_FILES);
 const reviewTimeoutMs = parsePositiveIntEnv("REVIEW_TIMEOUT_MS", DEFAULT_REVIEW_TIMEOUT_MS);
+const concurrency = parsePositiveIntEnv("CONCURRENCY", DEFAULT_ANALYZE_CONCURRENCY);
 
 const graph = buildReviewGraph({
   fetchDiff: { getPrDiff, getPrHeadSha, githubToken, maxFiles },
-  fetchContext: { getFileContent, getRelatedContext, githubToken },
-  analyze: { analyzeFile: createAnalyzeFile(geminiApiKey) },
+  fetchContext: { getFileContent, getRelatedContext, githubToken, concurrency },
+  analyze: { analyzeFile: createAnalyzeFile(geminiApiKey), concurrency },
   deliverReview: post
     ? makePostReviewNode({ postSummaryComment, findSummaryComment, updateSummaryComment, githubToken })
     : makePrintReviewNode({ print: (text) => console.log(text) }),

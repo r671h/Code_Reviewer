@@ -2,14 +2,25 @@ import type { AnalyzeFile } from "../llm.js";
 import { hunkLineRanges, truncatePatch, truncateRelatedContext, type LineRange } from "../diff.js";
 import { redactSecrets, type SecretMatch } from "../secrets.js";
 import type { Issue } from "../../schemas/review.js";
-import type { FileError, GraphStateType } from "../state.js";
+import { mapWithConcurrency } from "../concurrency.js";
+import type { FileContext, FileError, GraphStateType } from "../state.js";
+
+export const DEFAULT_ANALYZE_CONCURRENCY = 4;
 
 export interface AnalyzeDeps {
   analyzeFile: AnalyzeFile;
+  /** Max LLM calls in flight at once. Rate limits (429) are absorbed by the call's own retry. */
+  concurrency?: number;
+}
+
+interface FileAnalysis {
+  issues: Issue[];
+  fileErrors: FileError[];
 }
 
 /**
- * Runs the LLM analysis per file. A single file's analysis exhausting
+ * Runs the LLM analysis per file, up to `concurrency` files at a time;
+ * results keep the input file order. A single file's analysis exhausting
  * retries doesn't abort the review — it's recorded as a fileError and the
  * review proceeds with whatever files succeeded.
  *
@@ -18,42 +29,47 @@ export interface AnalyzeDeps {
  * doesn't touch is either hallucinated or out of scope.
  */
 export function makeAnalyzeNode(deps: AnalyzeDeps) {
+  const concurrency = deps.concurrency ?? DEFAULT_ANALYZE_CONCURRENCY;
+
   return async function analyze(state: GraphStateType): Promise<Partial<GraphStateType>> {
-    const issues: Issue[] = [];
-    const fileErrors: FileError[] = [];
+    const perFile = await mapWithConcurrency(state.fileContexts, concurrency, (fileContext) =>
+      analyzeOneFile(fileContext, deps.analyzeFile),
+    );
 
-    for (const fileContext of state.fileContexts) {
-      const patchScan = redactSecrets(truncatePatch(fileContext.patch));
-      const contextScan = redactSecrets(truncateRelatedContext(fileContext.relatedContext));
-      const secretMatches = [...patchScan.matches, ...contextScan.matches];
+    return {
+      issues: perFile.flatMap((result) => result.issues),
+      fileErrors: perFile.flatMap((result) => result.fileErrors),
+    };
+  };
+}
 
-      if (secretMatches.length > 0) {
-        issues.push(secretIssue(fileContext.path, secretMatches));
-      }
+async function analyzeOneFile(fileContext: FileContext, analyzeFile: AnalyzeFile): Promise<FileAnalysis> {
+  const issues: Issue[] = [];
+  const patchScan = redactSecrets(truncatePatch(fileContext.patch));
+  const contextScan = redactSecrets(truncateRelatedContext(fileContext.relatedContext));
+  const secretMatches = [...patchScan.matches, ...contextScan.matches];
 
-      try {
-        const result = await deps.analyzeFile({
-          ...fileContext,
-          patch: patchScan.redacted,
-          relatedContext: contextScan.redacted,
-        });
-        const ranges = hunkLineRanges(fileContext.patch);
-        for (const issue of result.issues) {
-          if (isWithin(issue.line, ranges)) {
-            issues.push({ ...issue, file: fileContext.path });
-          }
-        }
-      } catch (error) {
-        fileErrors.push({
-          path: fileContext.path,
-          stage: "analyze",
-          message: error instanceof Error ? error.message : String(error),
-        });
+  if (secretMatches.length > 0) {
+    issues.push(secretIssue(fileContext.path, secretMatches));
+  }
+
+  try {
+    const result = await analyzeFile({
+      ...fileContext,
+      patch: patchScan.redacted,
+      relatedContext: contextScan.redacted,
+    });
+    const ranges = hunkLineRanges(fileContext.patch);
+    for (const issue of result.issues) {
+      if (isWithin(issue.line, ranges)) {
+        issues.push({ ...issue, file: fileContext.path });
       }
     }
-
-    return { issues, fileErrors };
-  };
+    return { issues, fileErrors: [] };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { issues, fileErrors: [{ path: fileContext.path, stage: "analyze", message }] };
+  }
 }
 
 function isWithin(line: number, ranges: LineRange[]): boolean {
